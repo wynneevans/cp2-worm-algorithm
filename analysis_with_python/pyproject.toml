@@ -1,0 +1,11 @@
+[project]
+name = "cp2-analysis"
+version = "0.1.0"
+description = "Analysis of cp2-worm-algorithm-cpp simulation output"
+requires-python = ">=3.10"
+dependencies = [
+    "polars",
+    "numpy",
+    "matplotlib",
+    "seaborn",
+]

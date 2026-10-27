@@ -2,6 +2,6 @@ build/
 data/
 CMakeUserPresets.json
 .DS_Store
-analysis/venv/
+.venv/
 .ipynb_checkpoints/
 .claude/settings.local.json

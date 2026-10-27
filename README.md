@@ -25,10 +25,11 @@ src/tools/         analysis programs: analyseWorm, getWormXi, getXIutvNFiles
 include/cp2worm/   shared headers (jackknife.h)
 third_party/       ranlxd (Luescher's RANLUX generator, GPL) and toml++ (TOML parser, MIT)
 tests/             CTest regression tests and golden output
+tests/exact/       exact results and configs for Monte Carlo comparison
 configs/           run configs (production.toml) and the probability table
 scripts/           convert_probs.py, converts old probability files
-analysis/          Jupyter notebook and fitting scripts
-reference/         frozen copy of the original /dev/urandom-seeded simulator (not built)
+analysis_with_python/  Python (uv, polars, seaborn) analysis of the output files
+reference/         archive: original /dev/urandom-seeded simulator (not built) and the old analysis/ notebook
 data/              simulation output (gitignored)
 ```
 
@@ -142,6 +143,39 @@ A run overwrites existing files with the same name; use `--output-dir` or a diff
 `ctest` runs a fixed-seed case and compares it byte for byte with `tests/regression/golden`,
 checks that a recorded run replays exactly, that several runs in one file match separate
 runs, and that bad configs are rejected with a clear message.
+
+### Analysing M_ output
+```zsh
+cd analysis_with_python && uv sync
+uv run python analyse_m.py ../data/exact     # M_*.dat files or directories
+```
+With `q3`, `q8` the temporal winding charges (doubled units), `Lx` the periodic length, `N = Lx*Ly`:
+`M3 = <q3>/(2 Lx)`, `chi3 = beta <q3^2>/(4 N)`, `M8 = sqrt(3) <q8>/(2 Lx)`, `chi8 = 3 beta <q8^2>/(4 N)`.
+Errors come from a 50-block jackknife (`--nblocks`), the first 1% of rows is discarded (`--skip`).
+It writes `m_summary.csv`, `susceptibility.png` and `magnetisation.png` (MC and exact values from
+`tests/exact/exactCP2_results.csv` on the same axes) to `--out` (default `data/exact/plots`).
+
+`plot_m_raw.py` draws the raw columns for checking thermalisation and autocorrelation by eye: each
+panel is one column, with every `--block` (default 100) measurements averaged into one point and the
+whole-run mean dashed. A drift at the start suggests thermalisation, slow wander suggests autocorrelation.
+```zsh
+uv run python plot_m_raw.py ../data/exact    # writes raw_<lattice>_<bc>.png to data/exact/plots
+```
+
+`plot_m_acf.py` draws the autocorrelation function of each column and estimates the integrated
+autocorrelation time `tau_int = 1/2 + sum rho(t)` with Sokal's automatic window (dashed line);
+it writes `acf_<lattice>_<bc>.png` and `tau_int.csv`. Blocks used for errors should be much longer than `2 tau_int`.
+```zsh
+uv run python plot_m_acf.py ../data/exact [--maxlag 50]
+```
+
+`thermalisation.py` helps choose how many initial measurements to skip: `skipscan_<lattice>_<bc>.png` shows
+chi3 and M3 against the number skipped (they should be flat once past the transient, exact value dashed), and
+`mser.csv` gives the MSER-5 truncation point per column. MSER is noisy for rare-spike columns such as `w3x`,
+so judge by the skip scan and the q3/q8 columns.
+```zsh
+uv run python thermalisation.py ../data/exact
+```
 
 ### Notes
 - Boost 1.74 needs `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` under C++17 with libc++
