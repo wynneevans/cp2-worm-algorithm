@@ -5,7 +5,7 @@
 #include <vector>
 #include <array>
 #include <string>
-#include "ranlxd.c"
+#include <ranlxd.h>
 #include <cstring>
 #include <cstdio>
 #include <ctime>

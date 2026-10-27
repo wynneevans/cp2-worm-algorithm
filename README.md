@@ -17,3 +17,44 @@ a) spatially - if so the time direction of the worm also reverses
 b) temporally
 c) diagonally - spatially and temporally simultaneously.
 iii) Step ii) is repeated until the head of the worm finds its tail, at which point the update is complete, and a new valid configuration has been produced.
+
+## Repository layout
+```
+src/worm/          the worm algorithm simulator (wormCP2Mu2dAFMplaq)
+src/tools/         analysis programs: analyseWorm, getWormXi, getXIutvNFiles
+include/cp2worm/   shared headers (jackknife.h)
+third_party/ranlxd Martin Luescher's RANLUX random number generator (GPL)
+tests/             CTest regression tests and golden output
+scripts/           run_worm.zsh, the batch of production runs
+analysis/          Jupyter notebook and fitting scripts
+reference/         frozen copy of the original /dev/urandom-seeded simulator (not built)
+data/              simulation output (gitignored)
+```
+
+## Building and running
+Requires CMake 3.19+, a C++17 compiler and Boost 1.74+ (headers only).
+
+```zsh
+cmake -S . -B build/release -DBoost_ROOT=/path/to/boost
+cmake --build build/release
+(cd build/release && ctest --output-on-failure)
+```
+
+Machine-specific settings (Boost location, compiler flags) belong in a
+`CMakeUserPresets.json`, which is gitignored. Copy the `local-base` pattern from
+`CMakePresets.json`'s `release` preset and then run `cmake --preset=release-local`.
+
+The simulator takes the RNG seed as its 11th argument:
+```zsh
+build/release/src/wormCP2Mu2dAFMplaq data closed 100000 2.50 4 4 200 probabilities.txt 1 1 <seed>
+```
+`scripts/run_worm.zsh` passes a fresh random seed per run. `ctest` runs a fixed-seed
+case (seed 42) and compares it byte for byte with `tests/regression/golden`, so any
+change that alters the random stream or the physics fails the test.
+
+### Notes
+- Boost 1.74 needs `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` under C++17 with libc++
+  (set in `src/CMakeLists.txt`); it can be dropped after upgrading Boost.
+- If the compiler cannot find `<iostream>` on macOS, a stale
+  `/Library/Developer/CommandLineTools/usr/include/c++/v1` is shadowing the SDK headers.
+  Reinstall the Command Line Tools, or pass `-nostdinc++ -isystem $(xcrun --show-sdk-path)/usr/include/c++/v1`.

@@ -1,4 +1,7 @@
+# in intel shell
 numpy
 pandas
+# in M1 shell
 jupyterlab
+# in intel shell again
 seaborn

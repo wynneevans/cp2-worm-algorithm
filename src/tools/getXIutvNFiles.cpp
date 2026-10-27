@@ -10,7 +10,7 @@
 #include <ctime>
 #include <sstream>
 #include <boost/format.hpp>
-#include "jackknife.h"   
+#include <cp2worm/jackknife.h>   
 
 using namespace std;
 using namespace boost;

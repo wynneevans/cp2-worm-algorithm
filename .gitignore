@@ -1,3 +1,7 @@
-algorithm/build
-algorithm/output
-analysis/venv
+build/
+data/
+CMakeUserPresets.json
+.DS_Store
+analysis/venv/
+.ipynb_checkpoints/
+.claude/settings.local.json
