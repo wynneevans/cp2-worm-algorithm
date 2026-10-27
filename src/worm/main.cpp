@@ -6,12 +6,19 @@
 #include <array>
 #include <string>
 #include <ranlxd.h>
+#include <filesystem>
+#include <map>
+#include <optional>
+#include <random>
 #include <cstring>
 #include <cstdio>
 #include <ctime>
 #include <sstream>
 #include <boost/format.hpp>
 #include <boost/multi_array.hpp>
+#include "config.h"
+#include "input_error.h"
+#include "probabilities.h"
 
 using namespace std;
 using namespace boost;
@@ -73,7 +80,7 @@ class Lattice {
 
     
 public:
-  Lattice(string outDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, double p1, double p2, double p3, double p4, double p5, double p6, double p7, double p8, double p9, double p10, double p11, double p12, double p13, double p14, double p15, double p16, double p17, double p18, double p19, double p20, double p21, double p22, double p23, double p24, double p25, double p26, double p27, double p28, double p29, double p30, double p31, double p32, double p33, double p34, double p35, double p36, double p37, double p38, double p39, double p40, double p41, double p42, double p43, double p44, double p45, double p46, double p47, double p48, int sim);
+  Lattice(string outDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& p, int sim);
   int volume() {return Nx_*Ny_*Nt_;}
   int xyt(int x, int y, int t) { return x + y*Nx_ + t*Nx_*Ny_; }
   int x(int i) { return i%Nx_; }
@@ -114,7 +121,7 @@ public:
 };
 
  
-Lattice::Lattice(string outDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, double p1w, double p2w, double p3w, double p4w, double p5w, double p6w, double p7w, double p8w, double p9w, double p10w, double p11w, double p12w, double p13w, double p14w, double p15w, double p16w, double p17w, double p18w, double p19w, double p20w, double p21w, double p22w, double p23w, double p24w, double p25w, double p26w, double p27w, double p28w, double p29w, double p30w, double p31w, double p32w, double p33w, double p34w, double p35w, double p36w, double p37w, double p38w, double p39w, double p40w, double p41w, double p42w, double p43w, double p44w, double p45w, double p46w, double p47w, double p48w, int sim) : outDir_(outDir), BC_(BC), beta_(beta), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_np1_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), startP_(0), startColor_(0), originalColor_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), dt_(4*beta_/Nt_), q3_(0), q8_(0), mu3_(mu3), mu8_(mu8), p1_(p1w), p2_(p2w), p3_(p3w), p4_(p4w), p5_(p5w), p6_(p6w), p7_(p7w), p8_(p8w), p9_(p9w), p10_(p10w), p11_(p11w), p12_(p12w), p13_(p13w), p14_(p14w), p15_(p15w), p16_(p16w), p17_(p17w), p18_(p18w), p19_(p19w), p20_(p20w), p21_(p21w), p22_(p22w), p23_(p23w), p24_(p24w), p25_(p25w), p26_(p26w), p27_(p27w), p28_(p28w), p29_(p29w), p30_(p30w), p31_(p31w), p32_(p32w), p33_(p33w), p34_(p34w), p35_(p35w), p36_(p36w), p37_(p37w), p38_(p38w), p39_(p39w), p40_(p40w), p41_(p41w), p42_(p42w), p43_(p43w), p44_(p44w), p45_(p45w), p46_(p46w), p47_(p47w), p48_(p48w), sim_(sim), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
+Lattice::Lattice(string outDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& pw, int sim) : outDir_(outDir), BC_(BC), beta_(beta), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_np1_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), startP_(0), startColor_(0), originalColor_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), dt_(4*beta_/Nt_), q3_(0), q8_(0), mu3_(mu3), mu8_(mu8), p1_(pw[0]), p2_(pw[1]), p3_(pw[2]), p4_(pw[3]), p5_(pw[4]), p6_(pw[5]), p7_(pw[6]), p8_(pw[7]), p9_(pw[8]), p10_(pw[9]), p11_(pw[10]), p12_(pw[11]), p13_(pw[12]), p14_(pw[13]), p15_(pw[14]), p16_(pw[15]), p17_(pw[16]), p18_(pw[17]), p19_(pw[18]), p20_(pw[19]), p21_(pw[20]), p22_(pw[21]), p23_(pw[22]), p24_(pw[23]), p25_(pw[24]), p26_(pw[25]), p27_(pw[26]), p28_(pw[27]), p29_(pw[28]), p30_(pw[29]), p31_(pw[30]), p32_(pw[31]), p33_(pw[32]), p34_(pw[33]), p35_(pw[34]), p36_(pw[35]), p37_(pw[36]), p38_(pw[37]), p39_(pw[38]), p40_(pw[39]), p41_(pw[40]), p42_(pw[41]), p43_(pw[42]), p44_(pw[43]), p45_(pw[44]), p46_(pw[45]), p47_(pw[46]), p48_(pw[47]), sim_(sim), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
 {	
   stringstream outfileM, outfileC, outfileX;
 
@@ -2112,84 +2119,149 @@ Cfile_.close();
 }
 
 
-int main(int argc, char** argv) {
+namespace {
 
-  if(argc<12) {
-    cout << endl;
-    cout << "1: string directory\n";
-    cout << "2: string boundaryConditions\n";
-    cout << "3: int measurements\n";  
-    cout << "4: double beta\n"; 
-    cout << "5: int Lx\n"; 
-    cout << "6: int Ly\n";
-    cout << "7: int Lt\n";
-    cout << "8: string probList\n";
-    cout << "9: int nLine\n";
-    cout << "10: int nSim\n";
-    cout << "11: int seed (1 to 2^31-1)\n\n";
-    return 0;
+struct Options {
+  string configPath;
+  std::optional<string> only;
+  std::optional<string> outputDir;
+  std::optional<unsigned> seed;
+  bool dryRun = false;
+  bool help = false;
+};
+
+void printUsage(ostream& os) {
+  os << "Usage: wormCP2Mu2dAFMplaq <run.toml> [options]\n"
+        "\n"
+        "Runs every enabled [[run]] in the TOML file, in order.\n"
+        "\n"
+        "Options:\n"
+        "  --only NAME         run only the run called NAME (even if it is disabled)\n"
+        "  --output-dir DIR    write output here instead of the file's 'output'\n"
+        "  --seed N            use seed N (1 to 2147483647) for every run\n"
+        "  --dry-run           print the resolved runs and exit\n"
+        "  -h, --help          show this help\n"
+        "\n"
+        "Without a seed (here or in the file) each run draws a random one, prints it and\n"
+        "records it in run_<tag>.toml next to the output, which reproduces the run.\n";
+}
+
+Options parseArgs(int argc, char** argv) {
+  Options o;
+  auto value = [&](int& i, const string& flag) -> string {
+    if (i + 1 >= argc) throw InputError("option " + flag + " needs a value");
+    return argv[++i];
+  };
+  for (int i = 1; i < argc; i++) {
+    const string a = argv[i];
+    if (a == "-h" || a == "--help") {
+      o.help = true;
+    } else if (a == "--dry-run") {
+      o.dryRun = true;
+    } else if (a == "--only") {
+      o.only = value(i, a);
+    } else if (a == "--output-dir") {
+      o.outputDir = value(i, a);
+    } else if (a == "--seed") {
+      const string v = value(i, a);
+      char* end = nullptr;
+      errno = 0;
+      const unsigned long long n = strtoull(v.c_str(), &end, 10);
+      if (v.empty() || *end != '\0' || errno != 0 || n < 1 || n > kMaxSeed) {
+        throw InputError("--seed must be an integer between 1 and 2147483647, got '" + v + "'");
+      }
+      o.seed = static_cast<unsigned>(n);
+    } else if (a.size() > 1 && a[0] == '-') {
+      throw InputError("unknown option '" + a + "'");
+    } else if (o.configPath.empty()) {
+      o.configPath = a;
+    } else {
+      throw InputError("unexpected extra argument '" + a + "'");
+    }
   }
-    
-  clock_t start;
-  double duration;
-  start = clock();
-  
-  // Original /dev/urandom seeding, kept for reference:
-  // ifstream randnum("/dev/urandom", ios::in);
-  // const int rand_size = sizeof(unsigned int);
-  // char numstr[rand_size];
-  // randnum.read(numstr, rand_size);
-  // unsigned int num = *(unsigned int*) numstr;
-  // num = num >> 1;
-  // rlxd_init(2,num);
-  int seed = atoi(argv[11]);
-  rlxd_init(2,seed);
-  
-  string directory = argv[1];
-  string boundaryConditions = argv[2];
-  int measurements = atoi(argv[3]);
-  double beta = atof(argv[4]);
-  int Lx = atoi(argv[5]);
-  int Ly = atoi(argv[6]);
-  int Lt = atoi(argv[7]);
-  string probList = argv[8];
-  int nLine = atoi(argv[9]);
-  int nSim = atoi(argv[10]);
- 
-  string line;
-  stringstream probFile;
-  probFile << directory << "/" << probList;
-  
-  ifstream probs(probFile.str());
-  double e, u3, u8; 
-  double w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24;
-  double w25, w26, w27, w28, w29, w30, w31, w32, w33, w34, w35, w36, w37, w38, w39, w40, w41, w42, w43, w44, w45, w46, w47, w48;
+  if (!o.help && o.configPath.empty()) throw InputError("no config file given");
+  return o;
+}
 
+unsigned randomSeed() {
+  random_device rd;
+  return rd() % kMaxSeed + 1;
+}
 
-  for (int i = 1; i < nLine; i++) {
-    getline(probs,line);
-  }
-  
-  probs >> e >> u3 >> u8 >> w1 >> w2 >> w3 >> w4 >> w5 >> w6 >> w7 >> w8 >> w9 >> w10 >> w11 >> w12 >> w13 >> w14 >> w15 >> w16 >> w17 >> w18 >> w19 >> w20 >> w21 >> w22 >> w23 >> w24 >> w25 >> w26 >> w27 >> w28 >> w29 >> w30 >> w31 >> w32 >> w33 >> w34 >> w35 >> w36 >> w37 >> w38 >> w39 >> w40 >> w41 >> w42 >> w43 >> w44 >> w45 >> w46 >> w47 >> w48;
- 
-  cout << 4*beta/Lt << " = " << e << ", " << u3 << ", " << u8 << endl;
-  cout << w1  <<", "<< w2  <<", "<< w3  <<", "<< w4  <<", "<< w5  <<", "<< w6  <<", "<< w7  <<", "<< w8  <<", "<< w9  <<", "<< w10 <<", "<< w11 <<", "<< w12 << endl;
-  cout << w13 <<", "<< w14 <<", "<< w15 <<", "<< w16 <<", "<< w17 <<", "<< w18 <<", "<< w19 <<", "<< w20 <<", "<< w21 <<", "<< w22 <<", "<< w23 <<", "<< w24 << endl;
-  cout << w25 <<", "<< w26 <<", "<< w27 <<", "<< w28 <<", "<< w29 <<", "<< w30 <<", "<< w31 <<", "<< w32 <<", "<< w33 <<", "<< w34 <<", "<< w35 <<", "<< w36 << endl;
-  cout << w37 <<", "<< w38 <<", "<< w39 <<", "<< w40 <<", "<< w41 <<", "<< w42 <<", "<< w43 <<", "<< w44 <<", "<< w45 <<", "<< w46 <<", "<< w47 <<", "<< w48 << endl;
-  
-  Lattice system(directory, boundaryConditions, measurements, beta, Lx, Ly, Lt, u3, u8, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24, w25, w26, w27, w28, w29, w30, w31, w32, w33, w34, w35, w36, w37, w38, w39, w40, w41, w42, w43, w44, w45, w46, w47, w48, nSim);
- 
+void describe(const RunConfig& r, const ProbabilityTable::Row& row) {
+  cout << "run '" << r.name << "': bc=" << r.bc << " beta=" << r.beta << " lattice=" << r.Lx << "x" << r.Ly << "x"
+       << r.Lt << " dt=" << r.dt() << " mu3=" << r.mu3 << " mu8=" << r.mu8 << " measurements=" << r.measurements
+       << " sim=" << r.sim << " seed=";
+  if (r.seed) cout << *r.seed; else cout << "(random)";
+  cout << "\n  probabilities: " << r.probPath << " line " << row.line << "\n  output: " << r.outDir << endl;
+}
+
+void runOne(RunConfig run, const ProbabilityTable::Row& row) {
+  if (!run.seed) run.seed = randomSeed();
+  filesystem::create_directories(run.outDir);
+
+  const filesystem::path record = filesystem::path(run.outDir) / ("run_" + datasetTag(run) + ".toml");
+  ofstream(record) << toToml(run);
+  cout << "seed " << *run.seed << ", settings recorded in " << record.string() << endl;
+
+  clock_t start = clock();
+  rlxd_init(2, static_cast<int>(*run.seed));
+  Lattice system(run.outDir, run.bc, run.measurements, run.beta, run.Lx, run.Ly, run.Lt, run.mu3, run.mu8, row.p, run.sim);
   system.set_neighbours();
   system.set_plaq_origins();
   system.set_AFM_groundstate();
   system.setPatts();
   system.measure();
-  //system.check();
-  
-  duration = ( clock() - start ) / (double) CLOCKS_PER_SEC;
-  cout <<"Duration: "<< duration << endl;
-  
-  return 0;
+  cout << "Duration: " << (clock() - start) / (double) CLOCKS_PER_SEC << endl;
+}
 
+}  // namespace
+
+int main(int argc, char** argv) {
+  if (argc == 1) {
+    printUsage(cout);
+    return 0;
+  }
+  try {
+    const Options opt = parseArgs(argc, argv);
+    if (opt.help) {
+      printUsage(cout);
+      return 0;
+    }
+
+    vector<RunConfig> runs = loadConfig(opt.configPath);
+    if (opt.only) {
+      auto it = find_if(runs.begin(), runs.end(), [&](const RunConfig& r) { return r.name == *opt.only; });
+      if (it == runs.end()) throw InputError("no run named '" + *opt.only + "' in " + opt.configPath);
+      it->enabled = true;
+      runs = {*it};
+    }
+
+    // Resolve everything before running anything, so a typo in the last run
+    // does not waste hours on the earlier ones.
+    map<string, ProbabilityTable> tables;
+    vector<pair<RunConfig, ProbabilityTable::Row>> plan;
+    for (RunConfig r : runs) {
+      if (!r.enabled) {
+        cout << "skipping disabled run '" << r.name << "'" << endl;
+        continue;
+      }
+      if (opt.outputDir) r.outDir = filesystem::path(*opt.outputDir).lexically_normal().string();
+      if (opt.seed) r.seed = opt.seed;
+      validateRun(r);
+      auto t = tables.find(r.probPath);
+      if (t == tables.end()) t = tables.emplace(r.probPath, loadProbabilities(r.probPath)).first;
+      plan.emplace_back(r, selectRow(t->second, r.dt(), r.mu3, r.mu8));
+    }
+    if (plan.empty()) throw InputError("no enabled runs in " + opt.configPath);
+
+    for (const auto& [run, row] : plan) {
+      describe(run, row);
+      if (!opt.dryRun) runOne(run, row);
+    }
+    return 0;
+  } catch (const InputError& e) {
+    cerr << "error: " << e.what() << endl;
+    return 1;
+  }
 }

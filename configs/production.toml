@@ -1,0 +1,115 @@
+# Production runs (replaces scripts/run_worm.zsh). Run all enabled runs with:
+#   build/release/src/wormCP2Mu2dAFMplaq configs/production.toml
+# Run one (even a disabled one) with --only NAME. Without a seed each run draws a
+# random one and records it in run_<tag>.toml next to the output.
+# Every run here has dt = 4*beta/Lt = 0.05, the row present in probabilities.txt.
+
+[defaults]
+bc            = "closed"
+measurements  = 100000
+probabilities = "probabilities.txt"   # relative to this file
+output        = "../data"
+mu3           = 0.0
+mu8           = 0.0
+sim           = 1                     # tag in the output file names (was nSim)
+
+[[run]]
+name = "closed_b10_20x4x800"
+beta = 10.0
+lattice = [20, 4, 800]
+enabled = false
+
+[[run]]
+name = "closed_b2.5_4x4x200"
+beta = 2.5
+lattice = [4, 4, 200]
+
+[[run]]
+name = "closed_b5_20x4x400"
+beta = 5.0
+lattice = [20, 4, 400]
+
+[[run]]
+name = "closed_b5_8x8x400"
+beta = 5.0
+lattice = [8, 8, 400]
+
+[[run]]
+name = "closed_b5_8x4x400"
+beta = 5.0
+lattice = [8, 4, 400]
+
+[[run]]
+name = "closed_b10_8x8x800"
+beta = 10.0
+lattice = [8, 8, 800]
+
+[[run]]
+name = "closed_b20_4x4x1600"
+beta = 20.0
+lattice = [4, 4, 1600]
+
+[[run]]
+name = "y-open_b100_10x2x8000"
+bc = "y-open"
+beta = 100.0
+lattice = [10, 2, 8000]
+enabled = false
+
+[[run]]
+name = "y-open_b100_20x4x8000"
+bc = "y-open"
+beta = 100.0
+lattice = [20, 4, 8000]
+enabled = false
+
+[[run]]
+name = "y-open_b100_32x6x8000"
+bc = "y-open"
+beta = 100.0
+lattice = [32, 6, 8000]
+enabled = false
+
+[[run]]
+name = "y-open_b100_56x8x8000"
+bc = "y-open"
+beta = 100.0
+lattice = [56, 8, 8000]
+enabled = false
+
+[[run]]
+name = "y-open_b100_90x10x8000"
+bc = "y-open"
+beta = 100.0
+lattice = [90, 10, 8000]
+enabled = false
+
+[[run]]
+name = "closed_b100_10x2x8000"
+beta = 100.0
+lattice = [10, 2, 8000]
+enabled = false
+
+[[run]]
+name = "closed_b100_20x4x8000"
+beta = 100.0
+lattice = [20, 4, 8000]
+enabled = false
+
+[[run]]
+name = "closed_b100_32x6x8000"
+beta = 100.0
+lattice = [32, 6, 8000]
+enabled = false
+
+[[run]]
+name = "closed_b100_56x8x8000"
+beta = 100.0
+lattice = [56, 8, 8000]
+enabled = false
+
+[[run]]
+name = "closed_b100_90x10x8000"
+beta = 100.0
+lattice = [90, 10, 8000]
+enabled = false

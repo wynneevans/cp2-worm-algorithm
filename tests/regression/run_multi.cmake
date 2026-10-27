@@ -1,0 +1,36 @@
+# Running several [[run]]s in one process must give the same output as running
+# each in its own process. Inputs: SIM, CONFIG, WORK_DIR.
+file(REMOVE_RECURSE ${WORK_DIR})
+foreach(d all small larger)
+  file(MAKE_DIRECTORY ${WORK_DIR}/${d})
+endforeach()
+
+execute_process(COMMAND ${SIM} ${CONFIG} --output-dir ${WORK_DIR}/all RESULT_VARIABLE rc OUTPUT_QUIET)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "combined run failed (${rc})")
+endif()
+foreach(name small larger)
+  execute_process(COMMAND ${SIM} ${CONFIG} --only ${name} --output-dir ${WORK_DIR}/${name}
+                  RESULT_VARIABLE rc OUTPUT_QUIET)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "run '${name}' failed (${rc})")
+  endif()
+endforeach()
+
+file(GLOB dats RELATIVE ${WORK_DIR}/all ${WORK_DIR}/all/*.dat)
+list(LENGTH dats n)
+if(NOT n EQUAL 4)
+  message(FATAL_ERROR "expected 4 .dat files from two runs, found ${n}")
+endif()
+foreach(f ${dats})
+  if(EXISTS ${WORK_DIR}/small/${f})
+    set(other ${WORK_DIR}/small/${f})
+  else()
+    set(other ${WORK_DIR}/larger/${f})
+  endif()
+  execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files ${WORK_DIR}/all/${f} ${other}
+                  RESULT_VARIABLE differs)
+  if(differs)
+    message(FATAL_ERROR "${f}: combined run differs from the separate run")
+  endif()
+endforeach()

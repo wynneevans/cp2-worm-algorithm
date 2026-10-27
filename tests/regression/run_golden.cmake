@@ -2,14 +2,13 @@
 # golden files. Inputs: SIM, GOLDEN_DIR, WORK_DIR, SEED, EXPECT_MATCH.
 #
 # To regenerate the golden after an intended change to the physics:
-#   wormCP2Mu2dAFMplaq tests/regression/golden closed 1000 2.50 4 4 200 probabilities.txt 1 1 42
+#   wormCP2Mu2dAFMplaq tests/regression/golden/golden.toml --output-dir tests/regression/golden
 
 file(REMOVE_RECURSE ${WORK_DIR})
 file(MAKE_DIRECTORY ${WORK_DIR})
-file(COPY ${GOLDEN_DIR}/probabilities.txt DESTINATION ${WORK_DIR})
 
 execute_process(
-  COMMAND ${SIM} ${WORK_DIR} closed 1000 2.50 4 4 200 probabilities.txt 1 1 ${SEED}
+  COMMAND ${SIM} ${GOLDEN_DIR}/golden.toml --output-dir ${WORK_DIR} --seed ${SEED}
   RESULT_VARIABLE rc
   OUTPUT_QUIET)
 if(NOT rc EQUAL 0)

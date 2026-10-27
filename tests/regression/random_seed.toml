@@ -1,0 +1,11 @@
+# No seed: the simulator draws one and records it in run_<tag>.toml.
+[defaults]
+bc            = "closed"
+measurements  = 200
+probabilities = "golden/probabilities.txt"
+output        = "."
+
+[[run]]
+name    = "unseeded"
+beta    = 2.50
+lattice = [4, 4, 200]

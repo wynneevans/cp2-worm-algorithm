@@ -1,5 +1,5 @@
-add_executable(wormCP2Mu2dAFMplaq worm/main.cpp)
-target_link_libraries(wormCP2Mu2dAFMplaq PRIVATE Boost::headers ranlxd)
+add_executable(wormCP2Mu2dAFMplaq worm/main.cpp worm/config.cpp worm/probabilities.cpp)
+target_link_libraries(wormCP2Mu2dAFMplaq PRIVATE Boost::headers ranlxd tomlplusplus::tomlplusplus)
 # Boost 1.74's multi_array needs std::unary_function, which libc++ drops in
 # C++17. Not needed with Boost >= 1.81; remove once Boost is upgraded.
 target_compile_definitions(wormCP2Mu2dAFMplaq PRIVATE

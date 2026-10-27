@@ -1,0 +1,4 @@
+toml++ v3.4.0 (MIT), https://github.com/marzer/tomlplusplus
+Source: https://raw.githubusercontent.com/marzer/tomlplusplus/v3.4.0/toml.hpp
+SHA-256 of toml.hpp: 6b5172ad4dd6519aec67b919181fa7a38a2234131e5b2afa232dfe444819783e
+Vendored unmodified.

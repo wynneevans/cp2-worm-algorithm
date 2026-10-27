@@ -1,0 +1,13 @@
+# Fixed-seed case behind the golden .dat files. The test overrides the output
+# directory and (for the negative test) the seed on the command line.
+[defaults]
+bc            = "closed"
+measurements  = 1000
+probabilities = "probabilities.txt"
+output        = "."
+
+[[run]]
+name    = "golden"
+beta    = 2.50
+lattice = [4, 4, 200]
+seed    = 42

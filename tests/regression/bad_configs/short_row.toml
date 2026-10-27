@@ -1,0 +1,9 @@
+[defaults]
+bc = "closed"
+measurements = 10
+output = "out"
+
+[[run]]
+beta = 2.5
+lattice = [4, 4, 200]
+probabilities = "short_row_probs.txt"

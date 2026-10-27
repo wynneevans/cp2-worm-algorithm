@@ -1,0 +1,17 @@
+[defaults]
+bc            = "closed"
+measurements  = 200
+probabilities = "golden/probabilities.txt"
+output        = "."
+
+[[run]]
+name    = "small"
+beta    = 2.50
+lattice = [4, 4, 200]
+seed    = 7
+
+[[run]]
+name    = "larger"
+beta    = 5.0
+lattice = [8, 4, 400]
+seed    = 9

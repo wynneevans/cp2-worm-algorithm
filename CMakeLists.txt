@@ -17,6 +17,7 @@ option(CP2WORM_WARNINGS "Enable extra compiler warnings" OFF)
 find_package(Boost 1.74 REQUIRED)
 
 add_subdirectory(third_party/ranlxd)
+add_subdirectory(third_party/tomlplusplus)
 add_subdirectory(src)
 
 include(CTest)

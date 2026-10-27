@@ -23,9 +23,10 @@ iii) Step ii) is repeated until the head of the worm finds its tail, at which po
 src/worm/          the worm algorithm simulator (wormCP2Mu2dAFMplaq)
 src/tools/         analysis programs: analyseWorm, getWormXi, getXIutvNFiles
 include/cp2worm/   shared headers (jackknife.h)
-third_party/ranlxd Martin Luescher's RANLUX random number generator (GPL)
+third_party/       ranlxd (Luescher's RANLUX generator, GPL) and toml++ (TOML parser, MIT)
 tests/             CTest regression tests and golden output
-scripts/           run_worm.zsh, the batch of production runs
+configs/           run configs (production.toml) and the probability table
+scripts/           convert_probs.py, converts old probability files
 analysis/          Jupyter notebook and fitting scripts
 reference/         frozen copy of the original /dev/urandom-seeded simulator (not built)
 data/              simulation output (gitignored)
@@ -44,13 +45,56 @@ Machine-specific settings (Boost location, compiler flags) belong in a
 `CMakeUserPresets.json`, which is gitignored. Copy the `local-base` pattern from
 `CMakePresets.json`'s `release` preset and then run `cmake --preset=release-local`.
 
-The simulator takes the RNG seed as its 11th argument:
+## Running a simulation
+The simulator reads a TOML run file; `configs/production.toml` is the batch that used to be
+`run_worm.zsh`:
+
 ```zsh
-build/release/src/wormCP2Mu2dAFMplaq data closed 100000 2.50 4 4 200 probabilities.txt 1 1 <seed>
+build/release/src/wormCP2Mu2dAFMplaq configs/production.toml            # all enabled runs
+build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --only closed_b5_8x8x400
+build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --dry-run   # show what would run
 ```
-`scripts/run_worm.zsh` passes a fresh random seed per run. `ctest` runs a fixed-seed
-case (seed 42) and compares it byte for byte with `tests/regression/golden`, so any
-change that alters the random stream or the physics fails the test.
+
+```toml
+[defaults]
+bc            = "closed"            # or "y-open"
+measurements  = 100000
+probabilities = "probabilities.txt" # relative to this file
+output        = "../data"
+mu3 = 0.0
+mu8 = 0.0
+sim = 1                             # tag in the output file names
+
+[[run]]
+name    = "b2.5_4x4x200"
+beta    = 2.50
+lattice = [4, 4, 200]               # Lx, Ly, Lt (Lt must be a multiple of 4)
+# seed = 42                         # optional
+# enabled = false                   # skip this run unless chosen with --only
+```
+Any `[defaults]` key can be overridden inside a `[[run]]`. Unknown keys are errors, so a
+typo cannot silently fall back to a default. Everything is checked before the first run
+starts.
+
+**Seeds.** With no `seed` (and no `--seed N`) each run draws a random one, prints it, and
+writes `run_<tag>.toml` next to its `.dat` files. Running that file reproduces the output
+byte for byte: `wormCP2Mu2dAFMplaq <output>/run_<tag>.toml --output-dir elsewhere`.
+
+**Probability table.** `configs/probabilities.txt` has a header line and one row per
+`(dt, mu3, mu8)`, where `dt = 4*beta/Lt`:
+```
+# comments start with '#'
+dt mu3 mu8 p01 p02 ... p48
+0.05 0 0 1. 0 0.0253044 ...
+```
+Each run picks the row matching its own `4*beta/Lt`, `mu3` and `mu8`, and stops with the list
+of available rows if there is none. To simulate a new `dt`, add a row for it. Older
+headerless files (51 numbers per line) convert with
+`scripts/convert_probs.py old.txt new.txt`.
+
+`ctest` runs a fixed-seed case and compares it byte for byte with `tests/regression/golden`,
+checks that a recorded run replays exactly, that several runs in one file match separate
+runs, and that bad configs are rejected with a clear message.
 
 ### Notes
 - Boost 1.74 needs `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` under C++17 with libc++
