@@ -2061,26 +2061,26 @@ void Lattice::measure() {
     if (i%(N_meas_/20) == 0) {
      
       for (unsigned int k = 0; k < Nt_/4; k++) {
-	for (unsigned int j = 0; j < Nx_; j++) {	    
-     
-	  valt0tp1 = cXTt0tp1_[j + (k*Nx_)];
-	  valt0tm1 = cXTt0tm1_[j + (k*Nx_)];
-	  valtp1t0 = cXTtp1t0_[j + (k*Nx_)];
-	  valtm1t0 = cXTtm1t0_[j + (k*Nx_)];
-	  
-	  valu0up1 = cXTu0up1_[j + (k*Nx_)];
-	  valu0um1 = cXTu0um1_[j + (k*Nx_)];
-	  valup1u0 = cXTup1u0_[j + (k*Nx_)];
-	  valum1u0 = cXTum1u0_[j + (k*Nx_)];
+      	for (unsigned int j = 0; j < Nx_; j++) {	    
+           
+      	  valt0tp1 = cXTt0tp1_[j + (k*Nx_)];
+      	  valt0tm1 = cXTt0tm1_[j + (k*Nx_)];
+      	  valtp1t0 = cXTtp1t0_[j + (k*Nx_)];
+      	  valtm1t0 = cXTtm1t0_[j + (k*Nx_)];
+      	  
+      	  valu0up1 = cXTu0up1_[j + (k*Nx_)];
+      	  valu0um1 = cXTu0um1_[j + (k*Nx_)];
+      	  valup1u0 = cXTup1u0_[j + (k*Nx_)];
+      	  valum1u0 = cXTum1u0_[j + (k*Nx_)];
 
-	  valv0vp1 = cXTv0vp1_[j + (k*Nx_)];
-	  valv0vm1 = cXTv0vm1_[j + (k*Nx_)];
-	  valvp1v0 = cXTvp1v0_[j + (k*Nx_)];
-	  valvm1v0 = cXTvm1v0_[j + (k*Nx_)];
-	  
-	  Cfile_ << format("%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d\n") % valt0tp1 % valt0tm1 % valtp1t0 % valtm1t0 % valu0up1 % valu0um1 % valup1u0 % valum1u0 % valv0vp1 % valv0vm1 % valvp1v0 % valvm1v0; 
+      	  valv0vp1 = cXTv0vp1_[j + (k*Nx_)];
+      	  valv0vm1 = cXTv0vm1_[j + (k*Nx_)];
+      	  valvp1v0 = cXTvp1v0_[j + (k*Nx_)];
+      	  valvm1v0 = cXTvm1v0_[j + (k*Nx_)];
+      	  
+      	  Cfile_ << format("%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d\n") % valt0tp1 % valt0tm1 % valtp1t0 % valtm1t0 % valu0up1 % valu0um1 % valup1u0 % valum1u0 % valv0vp1 % valv0vm1 % valvp1v0 % valvm1v0; 
 
-	}
+      	}
       }
 
       
@@ -2114,7 +2114,7 @@ Cfile_.close();
 
 int main(int argc, char** argv) {
 
-  if(argc==1) {
+  if(argc<12) {
     cout << endl;
     cout << "1: string directory\n";
     cout << "2: string boundaryConditions\n";
@@ -2125,7 +2125,8 @@ int main(int argc, char** argv) {
     cout << "7: int Lt\n";
     cout << "8: string probList\n";
     cout << "9: int nLine\n";
-    cout << "10: int nSim\n\n";
+    cout << "10: int nSim\n";
+    cout << "11: int seed (1 to 2^31-1)\n\n";
     return 0;
   }
     
@@ -2133,13 +2134,16 @@ int main(int argc, char** argv) {
   double duration;
   start = clock();
   
-  ifstream randnum("/dev/urandom", ios::in);
-  const int rand_size = sizeof(unsigned int);
-  char numstr[rand_size];
-  randnum.read(numstr, rand_size);
-  unsigned int num = *(unsigned int*) numstr;
-  num = num >> 1;
-  rlxd_init(2,num);
+  // Original /dev/urandom seeding, kept for reference:
+  // ifstream randnum("/dev/urandom", ios::in);
+  // const int rand_size = sizeof(unsigned int);
+  // char numstr[rand_size];
+  // randnum.read(numstr, rand_size);
+  // unsigned int num = *(unsigned int*) numstr;
+  // num = num >> 1;
+  // rlxd_init(2,num);
+  int seed = atoi(argv[11]);
+  rlxd_init(2,seed);
   
   string directory = argv[1];
   string boundaryConditions = argv[2];
