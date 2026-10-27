@@ -32,7 +32,24 @@ reference/         frozen copy of the original /dev/urandom-seeded simulator (no
 data/              simulation output (gitignored)
 ```
 
-## Building and running
+## Quick start
+```zsh
+# 1. Build (set Boost_ROOT to your Boost 1.74+ headers; see "Building" below)
+cmake -S . -B build/release -DBoost_ROOT=/path/to/boost
+cmake --build build/release
+
+# 2. Check the build: runs the regression tests (a few seconds)
+(cd build/release && ctest --output-on-failure)
+
+# 3. Preview the production batch without running anything
+build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --dry-run
+
+# 4. Run one small case, writing to data/test so nothing else is overwritten
+build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --only closed_b2.5_4x4x200 --output-dir data/test
+```
+Run it with no arguments, or with `--help`, to print the usage text.
+
+## Building
 Requires CMake 3.19+, a C++17 compiler and Boost 1.74+ (headers only).
 
 ```zsh
@@ -72,6 +89,21 @@ lattice = [4, 4, 200]               # Lx, Ly, Lt (Lt must be a multiple of 4)
 # seed = 42                         # optional
 # enabled = false                   # skip this run unless chosen with --only
 ```
+### Command-line options
+```
+wormCP2Mu2dAFMplaq <run.toml> [options]
+```
+| Option | Effect |
+| --- | --- |
+| `--only NAME` | Run only the `[[run]]` called `NAME`, even if it has `enabled = false`. |
+| `--output-dir DIR` | Write output to `DIR` instead of the file's `output`. |
+| `--seed N` | Use seed `N` (1 to 2147483647) for every run. |
+| `--dry-run` | Print the resolved runs and the probability row each will use, then exit. |
+| `-h`, `--help` | Show the usage text. |
+
+The program exits with status 1 and an `error:` message on bad input (config, probability
+table or options), before any simulation starts.
+
 Any `[defaults]` key can be overridden inside a `[[run]]`. Unknown keys are errors, so a
 typo cannot silently fall back to a default. Everything is checked before the first run
 starts.
@@ -91,6 +123,21 @@ Each run picks the row matching its own `4*beta/Lt`, `mu3` and `mu8`, and stops 
 of available rows if there is none. To simulate a new `dt`, add a row for it. Older
 headerless files (51 numbers per line) convert with
 `scripts/convert_probs.py old.txt new.txt`.
+
+### Output
+Each run writes, into its output directory:
+
+| File | Contents |
+| --- | --- |
+| `C_wormCP2AFMmu2dplaq_<tag>.dat` | Correlator measurements, comma-separated, read by `analysis/` and the tools in `src/tools/`. |
+| `M_wormCP2AFMmu2dplaq_<tag>.dat` | Per-measurement winding numbers, charges and worm counters, comma-separated. |
+| `run_<tag>.toml` | The exact settings, including the seed, that reproduce the run. |
+
+`<tag>` encodes the parameters, e.g.
+`BC_closed_nMeas_100000_beta_2.50_XYT_4_4_200_mu3_0.000_mu8_0.000_nSim_1`, and the analysis
+tools read the lattice size and other values back out of it, so do not rename the files.
+A run overwrites existing files with the same name; use `--output-dir` or a different
+`sim` to keep earlier results.
 
 `ctest` runs a fixed-seed case and compares it byte for byte with `tests/regression/golden`,
 checks that a recorded run replays exactly, that several runs in one file match separate
