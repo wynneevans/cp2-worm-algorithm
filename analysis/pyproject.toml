@@ -1,0 +1,34 @@
+[project]
+name = "cp2-analysis"
+version = "0.1.0"
+description = "Analysis of cp2-worm-algorithm-cpp simulation output"
+requires-python = ">=3.11"
+dependencies = [
+    "polars",
+    "numpy",
+    "seaborn",
+    "matplotlib",
+]
+
+[project.scripts]
+cp2-analysis = "cp2analysis.cli:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cp2analysis"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

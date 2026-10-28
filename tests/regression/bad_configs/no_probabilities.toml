@@ -1,0 +1,7 @@
+[defaults]
+bc = "closed"
+measurements = 10
+
+[[run]]
+beta = 2.5
+lattice = [4, 4, 200]

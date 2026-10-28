@@ -2,7 +2,6 @@
 bc            = "closed"
 measurements  = 200
 probabilities = "golden/probabilities.txt"
-output        = "."
 
 [[run]]
 name    = "small"

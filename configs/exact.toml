@@ -1,0 +1,37 @@
+# Runs checked against the exact results in tests/exact/exactCP2_results.csv
+# (beta = 0.05, mu3 = mu8 = 0; Lx x Ly with y the open direction):
+#   2x2 closed : susceptibility 0.0080440461, magnetization 0
+#   2x2 y-open : susceptibility 0.0081171288, magnetization 0
+#   2x3 y-open : susceptibility 0.008094515,  magnetization 0
+# Lt = 4 gives dt = 4*beta/Lt = 0.05, the row in probabilities.txt.
+# The program does no thermalisation: discard the first measurements when analysing.
+# Run all:  build/release/src/wormCP2Mu2dAFMplaq configs/exact.toml
+# Run one:  build/release/src/wormCP2Mu2dAFMplaq configs/exact.toml --only 2x2_closed
+# Output:   data/<bc>_1000000_0.05_<Lx>_<Ly>_4_mu3_0.000_mu8_0.000/{M,C}_<time>.dat and run_<time>.toml
+# Repeat with another seed: add --seed N (the repeat joins the same folder).
+
+[defaults]
+measurements = 1000000
+mu3          = 0.0
+mu8          = 0.0
+
+[[run]]
+name    = "2x2_closed"
+bc      = "closed"
+beta    = 0.05
+lattice = [2, 2, 4]   # Lx, Ly, Lt
+seed    = 20250101
+
+[[run]]
+name    = "2x2_yopen"
+bc      = "y-open"
+beta    = 0.05
+lattice = [2, 2, 4]
+seed    = 20250102
+
+[[run]]
+name    = "2x3_yopen"
+bc      = "y-open"
+beta    = 0.05
+lattice = [2, 3, 4]
+seed    = 20250103

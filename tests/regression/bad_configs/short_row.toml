@@ -1,7 +1,6 @@
 [defaults]
 bc = "closed"
 measurements = 10
-output = "out"
 
 [[run]]
 beta = 2.5

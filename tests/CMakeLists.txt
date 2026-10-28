@@ -51,3 +51,14 @@ add_bad_config_test(unknown_key "unknown key 'mesurements'")
 add_bad_config_test(bad_bc "bc must be")
 add_bad_config_test(seed_range "seed must be between")
 add_bad_config_test(lt_not_multiple_of_4 "Lt must be a multiple of 4")
+add_bad_config_test(inline_dt_mismatch "inline probabilities are for dt=0.1")
+add_bad_config_test(inline_missing_key "missing 'p48'")
+add_bad_config_test(no_probabilities "no probabilities: set 'probabilities'")
+add_bad_config_test(beta_precision "beta may have at most 2 decimal places")
+add_bad_config_test(mu_precision "mu3 and mu8 may have at most 3 decimal places")
+
+# With no 'probabilities' key the nearest probabilities.txt in a parent folder is used.
+add_test(NAME master_table_found_in_parent
+  COMMAND wormCP2Mu2dAFMplaq ${REGRESSION_DIR}/ancestor/sub/found.toml --dry-run)
+set_tests_properties(master_table_found_in_parent PROPERTIES
+  PASS_REGULAR_EXPRESSION "probabilities: .*ancestor/probabilities.txt line")

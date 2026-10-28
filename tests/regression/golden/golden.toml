@@ -1,10 +1,9 @@
-# Fixed-seed case behind the golden .dat files. The test overrides the output
+# Fixed-seed case behind golden/M.dat and golden/C.dat. The test overrides the data
 # directory and (for the negative test) the seed on the command line.
 [defaults]
 bc            = "closed"
 measurements  = 1000
 probabilities = "probabilities.txt"
-output        = "."
 
 [[run]]
 name    = "golden"

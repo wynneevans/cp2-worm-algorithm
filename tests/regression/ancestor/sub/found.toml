@@ -1,0 +1,9 @@
+# No probabilities key: the nearest probabilities.txt in a parent folder is used.
+[defaults]
+bc = "closed"
+measurements = 200
+
+[[run]]
+name = "found"
+beta = 2.5
+lattice = [4, 4, 200]

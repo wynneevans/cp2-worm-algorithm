@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 #include <string_view>
+#include <ctime>
 
 #include <toml.hpp>
 
@@ -66,6 +67,98 @@ std::string formatDouble(double v) {
 
 }  // namespace
 
+
+std::string RunConfig::folderName() const {
+  // + 0.0 turns -0.0 into 0.0 so it prints as "0.000".
+  char buf[256];
+  std::snprintf(buf, sizeof buf, "%s_%d_%.2f_%d_%d_%d_mu3_%.3f_mu8_%.3f", bc.c_str(), measurements, beta + 0.0, Lx, Ly,
+                Lt, mu3 + 0.0, mu8 + 0.0);
+  return buf;
+}
+
+std::string RunConfig::runDir() const { return (fs::path(dataDir) / folderName()).lexically_normal().string(); }
+
+std::string utcStamp() {
+  const std::time_t now = std::time(nullptr);
+  std::tm tm{};
+  gmtime_r(&now, &tm);
+  char buf[32];
+  std::strftime(buf, sizeof buf, "%Y%m%d-%H%M%S", &tm);
+  return buf;
+}
+
+std::string utcNow() {
+  const std::time_t now = std::time(nullptr);
+  std::tm tm{};
+  gmtime_r(&now, &tm);
+  char buf[32];
+  std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tm);
+  return buf;
+}
+
+namespace {
+
+// True if v has at most `places` decimal places (as written in the config).
+bool hasAtMostDecimals(double v, int places) {
+  const double scaled = v * std::pow(10.0, places);
+  return std::fabs(scaled - std::round(scaled)) <= 1e-9 * std::max(1.0, std::fabs(scaled));
+}
+
+std::string weightName(int i) {
+  char name[8];
+  std::snprintf(name, sizeof name, "p%02d", i);
+  return name;
+}
+
+// Inline probabilities: a table with dt, mu3, mu8 and p01 .. p48.
+ProbabilityTable::Row parseInlineRow(const toml::table& t, const std::string& where) {
+  std::set<std::string> allowed = {"dt", "mu3", "mu8"};
+  for (int i = 1; i <= kNumWeights; i++) allowed.insert(weightName(i));
+  for (auto&& [key, node] : t) {
+    if (!allowed.count(std::string(key.str()))) {
+      throw InputError(where + ": probabilities: unknown key '" + std::string(key.str()) + "'");
+    }
+  }
+  auto get = [&](const std::string& key) {
+    auto v = fetch<double>(t, key, where + ": probabilities");
+    if (!v) throw InputError(where + ": probabilities: missing '" + key + "'");
+    if (!std::isfinite(*v)) throw InputError(where + ": probabilities: '" + key + "' is not finite");
+    return *v;
+  };
+  ProbabilityTable::Row row;
+  row.dt = get("dt");
+  row.mu3 = get("mu3");
+  row.mu8 = get("mu8");
+  for (int i = 0; i < kNumWeights; i++) row.p[i] = get(weightName(i + 1));
+  row.line = 0;
+  return row;
+}
+
+// The nearest probabilities.txt in `dir` or a parent folder.
+std::optional<std::string> findMasterTable(const fs::path& dir) {
+  for (fs::path d = fs::absolute(dir).lexically_normal(); !d.empty(); d = d.parent_path()) {
+    if (fs::exists(d / "probabilities.txt")) return (d / "probabilities.txt").string();
+    if (d == d.parent_path()) break;
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
+const ProbabilityTable::Row& probabilityRow(const RunConfig& run, const ProbabilityTable* table) {
+  if (run.inlineRow) {
+    const auto& r = *run.inlineRow;
+    if (!sameValue(r.dt, run.dt()) || !sameValue(r.mu3, run.mu3) || !sameValue(r.mu8, run.mu8)) {
+      std::ostringstream msg;
+      msg << "run '" << run.name << "': inline probabilities are for dt=" << r.dt << " mu3=" << r.mu3 << " mu8=" << r.mu8
+          << " but the run has dt=" << run.dt() << " mu3=" << run.mu3 << " mu8=" << run.mu8;
+      throw InputError(msg.str());
+    }
+    return r;
+  }
+  return selectRow(*table, run.dt(), run.mu3, run.mu8);
+}
+
 void validateRun(const RunConfig& r) {
   const std::string where = "run '" + r.name + "'";
   if (r.bc != "closed" && r.bc != "y-open") {
@@ -79,7 +172,15 @@ void validateRun(const RunConfig& r) {
                      std::to_string(r.Lt));
   }
   if (!std::isfinite(r.mu3) || !std::isfinite(r.mu8)) throw InputError(where + ": mu3 and mu8 must be finite");
-  if (r.sim < 0) throw InputError(where + ": sim must not be negative");
+  // The folder name rounds beta to 2 and mu to 3 decimals; more precision would mix different runs.
+  if (!hasAtMostDecimals(r.beta, 2)) {
+    throw InputError(where + ": beta may have at most 2 decimal places (it names the output folder), got " +
+                     formatDouble(r.beta));
+  }
+  if (!hasAtMostDecimals(r.mu3, 3) || !hasAtMostDecimals(r.mu8, 3)) {
+    throw InputError(where + ": mu3 and mu8 may have at most 3 decimal places (they name the output folder), got mu3=" +
+                     formatDouble(r.mu3) + " mu8=" + formatDouble(r.mu8));
+  }
   if (r.seed && (*r.seed < 1 || *r.seed > kMaxSeed)) {
     throw InputError(where + ": seed must be between 1 and 2147483647");
   }
@@ -96,12 +197,13 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
   }
   const fs::path base = fs::path(path).parent_path();
 
-  rejectUnknownKeys(root, {"defaults", "run"}, path);
+  rejectUnknownKeys(root, {"defaults", "run", "provenance"}, path);
   const toml::table* defaults = nullptr;
   if (const toml::node* d = root.get("defaults")) {
     defaults = d->as_table();
     if (!defaults) throw InputError(path + ": [defaults] must be a table");
-    rejectUnknownKeys(*defaults, {"bc", "measurements", "probabilities", "output", "mu3", "mu8", "sim", "seed"},
+    rejectUnknownKeys(*defaults,
+                      {"bc", "measurements", "probabilities", "data_dir", "mu3", "mu8", "seed"},
                       "[defaults]");
   }
 
@@ -117,8 +219,8 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
     RunConfig r;
     r.name = fetch<std::string>(*t, "name", "run #" + std::to_string(i + 1)).value_or("run" + std::to_string(i + 1));
     const std::string where = "run '" + r.name + "'";
-    rejectUnknownKeys(*t, {"name", "bc", "measurements", "beta", "lattice", "probabilities", "output", "mu3", "mu8",
-                           "sim", "seed", "enabled"},
+    rejectUnknownKeys(*t, {"name", "bc", "measurements", "beta", "lattice", "probabilities", "data_dir", "mu3", "mu8",
+                           "seed", "enabled"},
                       where);
     if (!names.insert(r.name).second) throw InputError(where + ": name is used by more than one run");
 
@@ -133,7 +235,6 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
     r.beta = need(fetchWithDefault<double>(*t, defaults, "beta", where), "beta");
     r.mu3 = fetchWithDefault<double>(*t, defaults, "mu3", where).value_or(0.0);
     r.mu8 = fetchWithDefault<double>(*t, defaults, "mu8", where).value_or(0.0);
-    r.sim = static_cast<int>(fetchWithDefault<int64_t>(*t, defaults, "sim", where).value_or(1));
     r.enabled = fetch<bool>(*t, "enabled", where).value_or(true);
     if (auto s = fetchWithDefault<int64_t>(*t, defaults, "seed", where)) {
       if (*s < 1 || *s > static_cast<int64_t>(kMaxSeed)) throw InputError(where + ": seed must be between 1 and 2147483647");
@@ -152,8 +253,18 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
     r.Ly = dims[1];
     r.Lt = dims[2];
 
-    r.probPath = resolvePath(base, need(fetchWithDefault<std::string>(*t, defaults, "probabilities", where), "probabilities"));
-    r.outDir = resolvePath(base, need(fetchWithDefault<std::string>(*t, defaults, "output", where), "output"));
+    r.dataDir = resolvePath(base, fetchWithDefault<std::string>(*t, defaults, "data_dir", where).value_or("../data"));
+
+    const toml::node* probs = t->get("probabilities");
+    if (probs && probs->is_table()) {
+      r.inlineRow = parseInlineRow(*probs->as_table(), where);
+    } else if (auto p = fetchWithDefault<std::string>(*t, defaults, "probabilities", where)) {
+      r.probPath = resolvePath(base, *p);
+    } else if (auto found = findMasterTable(base.empty() ? fs::path(".") : base)) {
+      r.probPath = *found;
+    } else {
+      throw InputError(where + ": no probabilities: set 'probabilities' or put a probabilities.txt in the config's folder or a parent folder");
+    }
 
     validateRun(r);
     out.push_back(r);
@@ -161,27 +272,30 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
   return out;
 }
 
-std::string datasetTag(const RunConfig& r) {
-  char buf[256];
-  std::snprintf(buf, sizeof buf, "BC_%s_nMeas_%d_beta_%.2f_XYT_%d_%d_%d_mu3_%.3f_mu8_%.3f_nSim_%d", r.bc.c_str(),
-                r.measurements, r.beta, r.Lx, r.Ly, r.Lt, r.mu3, r.mu8, r.sim);
-  return buf;
-}
-
-std::string toToml(const RunConfig& r) {
+std::string toToml(const RunConfig& r, const ProbabilityTable::Row& row, const Provenance& prov) {
+  const fs::path runDir = fs::absolute(r.runDir()).lexically_normal();
+  const fs::path dataDir = fs::absolute(r.dataDir).lexically_normal();
   std::ostringstream o;
-  o << "# Reproduce with: wormCP2Mu2dAFMplaq <this file>\n"
+  o << "# Record of what was run. Replay with: wormCP2Mu2dAFMplaq <this file> [--data-dir <elsewhere>]\n"
     << "[[run]]\n"
     << "name = " << toml::value<std::string>(r.name) << "\n"
+    << "data_dir = " << toml::value<std::string>(dataDir.lexically_relative(runDir).generic_string()) << "\n"
     << "bc = " << toml::value<std::string>(r.bc) << "\n"
     << "measurements = " << r.measurements << "\n"
     << "beta = " << formatDouble(r.beta) << "\n"
     << "lattice = [" << r.Lx << ", " << r.Ly << ", " << r.Lt << "]\n"
     << "mu3 = " << formatDouble(r.mu3) << "\n"
-    << "mu8 = " << formatDouble(r.mu8) << "\n"
-    << "sim = " << r.sim << "\n";
+    << "mu8 = " << formatDouble(r.mu8) << "\n";
   if (r.seed) o << "seed = " << *r.seed << "\n";
-  o << "probabilities = " << toml::value<std::string>(fs::absolute(r.probPath).string()) << "\n"
-    << "output = " << toml::value<std::string>(fs::absolute(r.outDir).string()) << "\n";
+  o << "\n[run.probabilities]\n"
+    << "dt = " << formatDouble(row.dt) << "\n"
+    << "mu3 = " << formatDouble(row.mu3) << "\n"
+    << "mu8 = " << formatDouble(row.mu8) << "\n";
+  for (int i = 0; i < kNumWeights; i++) o << weightName(i + 1) << " = " << formatDouble(row.p[i]) << "\n";
+  o << "\n[provenance]\n"
+    << "started = " << toml::value<std::string>(prov.started) << "\n";
+  if (prov.finished) o << "finished = " << toml::value<std::string>(*prov.finished) << "\n";
+  if (prov.wallSeconds) o << "wall_seconds = " << formatDouble(*prov.wallSeconds) << "\n";
+  o << "git = " << toml::value<std::string>(prov.git) << "\n";
   return o.str();
 }

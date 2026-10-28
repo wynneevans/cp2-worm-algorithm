@@ -1,0 +1,65 @@
+# <Project name>
+
+<One or two sentences: what the C++ code does, and what the Python tools analyse.>
+Example: High-performance simulation engine in C++20. Python tools in `analysis/` post-process its output files and produce plots and reports.
+
+## Layout
+- `src/`, `include/` - C++ library and executables
+- `tests/` - C++ unit tests (<GoogleTest | Catch2>)
+- `analysis/` - Python analysis tools (package: `<pkgname>`)
+- `analysis/tests/` - pytest suite
+- `cmake/`, `CMakePresets.json` - build configuration
+- `third_party/` - vendored code. **Do not edit.**
+- `build/` - out-of-source build dirs. **Never commit, never edit by hand.**
+
+## Commands
+
+### C++
+- Configure: `cmake --preset dev`
+- Build: `cmake --build --preset dev -j`
+- Test all: `ctest --preset dev --output-on-failure`
+- Test one: `ctest --preset dev -R <TestName>`
+- Sanitizer build: `cmake --preset asan && cmake --build --preset asan`
+- Format: `clang-format -i <files>` (config in `.clang-format`)
+- Lint: `clang-tidy -p build/dev <file>`
+
+### Python (run from `analysis/`)
+- Setup: `uv sync` (or `python -m venv .venv && pip install -e ".[dev]"`)
+- Test: `uv run pytest -q`
+- Lint and format: `uv run ruff check --fix . && uv run ruff format .`
+- Types: `uv run mypy <pkgname>`
+
+Before saying a task is done, build and run the tests for whichever side you changed.
+
+## C++ conventions
+- Standard: C++<20>. Do not use compiler-specific extensions.
+- Manage ownership with RAII. Use `std::unique_ptr` by default and `std::shared_ptr` only when ownership is genuinely shared. No raw `new`/`delete`.
+- Pass by `const&` or `std::span`/`std::string_view` for read-only data.
+- Errors: <exceptions | `std::expected` | error codes>. Follow the existing pattern in the module you are editing.
+- Headers use `#pragma once`. Include what you use. Don't add `using namespace` in headers.
+- Naming: <`PascalCase` types, `snake_case` functions/variables, `kConstant`, `member_` suffix>
+- New code needs a unit test in `tests/` that mirrors the source path.
+- Performance-sensitive code is in `<src/core/>`. Avoid allocations in hot loops, and don't change algorithms there without saying so.
+
+## Python conventions
+- Python <3.11+>. Type hints on all public functions.
+- Use numpy/pandas vectorised operations rather than Python loops over large data.
+- Tools are CLI entry points (`<argparse | click | typer>`). Keep the logic in importable functions so tests can call it without the CLI.
+- Never hardcode paths to data. Take them as arguments.
+- Plots: <matplotlib>. Save to files, never call `plt.show()` in tools.
+
+## C++ / Python boundary
+- The Python tools read C++ output in <format: CSV | HDF5 | JSON | binary layout>. The schema is defined in `<include/.../output_format.hpp>` and mirrored in `<analysis/pkgname/io.py>`.
+- **If you change the output format, update both sides and the tests on both sides in the same change.**
+- <If using pybind11/nanobind: bindings live in `src/bindings/`. Rebuild with `cmake --build --preset dev --target <module>` before running Python tests that import it.>
+
+## Don't
+- Edit `third_party/`, generated files, or anything under `build/`.
+- Change `CMakePresets.json`, CI config, or compiler flags unless asked.
+- Add new dependencies (C++ or Python) without asking first.
+- Commit large data files. Test fixtures go in `<tests/data/>` and stay under <1 MB>.
+
+## Gotchas
+<Add things that trip people up. Examples:>
+- <Full build takes ~N min. Build only the target you need: `cmake --build --preset dev --target <name>`.>
+- <Tests in `tests/integration/` need `DATA_DIR` set and are slow. Skip them unless you touched I/O.>

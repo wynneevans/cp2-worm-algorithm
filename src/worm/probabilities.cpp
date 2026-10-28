@@ -28,11 +28,11 @@ std::vector<std::string> tokens(const std::string& line) {
   return out;
 }
 
-bool closeEnough(double a, double b) {
+}  // namespace
+
+bool sameValue(double a, double b) {
   return std::fabs(a - b) <= 1e-9 * std::max({1.0, std::fabs(a), std::fabs(b)});
 }
-
-}  // namespace
 
 ProbabilityTable loadProbabilities(const std::string& path) {
   std::ifstream in(path);
@@ -89,7 +89,7 @@ ProbabilityTable loadProbabilities(const std::string& path) {
 const ProbabilityTable::Row& selectRow(const ProbabilityTable& table, double dt, double mu3, double mu8) {
   const ProbabilityTable::Row* found = nullptr;
   for (const auto& r : table.rows) {
-    if (closeEnough(r.dt, dt) && closeEnough(r.mu3, mu3) && closeEnough(r.mu8, mu8)) {
+    if (sameValue(r.dt, dt) && sameValue(r.mu3, mu3) && sameValue(r.mu8, mu8)) {
       if (found) {
         throw InputError(table.path + ": lines " + std::to_string(found->line) + " and " +
                          std::to_string(r.line) + " both match dt=" + std::to_string(dt));

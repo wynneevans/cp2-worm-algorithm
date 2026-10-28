@@ -13,6 +13,9 @@
 #include <cstring>
 #include <cstdio>
 #include <ctime>
+#include <chrono>
+#include <cerrno>
+#include <unistd.h>
 #include <sstream>
 #include <boost/format.hpp>
 #include <boost/multi_array.hpp>
@@ -49,6 +52,10 @@ inline int modulo(int a, int b) {
 }
 
 
+// While a run is going its files are M_<tag>.dat, C_<tag>.dat and run_<tag>.toml with this
+// tag; when it finishes they are renamed to the finish time.
+string runningTag() { return "running_" + to_string(getpid()); }
+
 double rvec[1];
 inline double ran() {ranlxd(rvec,1);return rvec[0];} //Generates random number between 0 and 1
 inline int ranspin() {ranlxd(rvec,1);return int(2*rvec[0]);} //Generates random number 0 or 1
@@ -80,7 +87,7 @@ class Lattice {
 
     
 public:
-  Lattice(string outDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& p, int sim);
+  Lattice(string runDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& p, int sim);
   int volume() {return Nx_*Ny_*Nt_;}
   int xyt(int x, int y, int t) { return x + y*Nx_ + t*Nx_*Ny_; }
   int x(int i) { return i%Nx_; }
@@ -121,17 +128,11 @@ public:
 };
 
  
-Lattice::Lattice(string outDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& pw, int sim) : outDir_(outDir), BC_(BC), beta_(beta), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_np1_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), startP_(0), startColor_(0), originalColor_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), dt_(4*beta_/Nt_), q3_(0), q8_(0), mu3_(mu3), mu8_(mu8), p1_(pw[0]), p2_(pw[1]), p3_(pw[2]), p4_(pw[3]), p5_(pw[4]), p6_(pw[5]), p7_(pw[6]), p8_(pw[7]), p9_(pw[8]), p10_(pw[9]), p11_(pw[10]), p12_(pw[11]), p13_(pw[12]), p14_(pw[13]), p15_(pw[14]), p16_(pw[15]), p17_(pw[16]), p18_(pw[17]), p19_(pw[18]), p20_(pw[19]), p21_(pw[20]), p22_(pw[21]), p23_(pw[22]), p24_(pw[23]), p25_(pw[24]), p26_(pw[25]), p27_(pw[26]), p28_(pw[27]), p29_(pw[28]), p30_(pw[29]), p31_(pw[30]), p32_(pw[31]), p33_(pw[32]), p34_(pw[33]), p35_(pw[34]), p36_(pw[35]), p37_(pw[36]), p38_(pw[37]), p39_(pw[38]), p40_(pw[39]), p41_(pw[40]), p42_(pw[41]), p43_(pw[42]), p44_(pw[43]), p45_(pw[44]), p46_(pw[45]), p47_(pw[46]), p48_(pw[47]), sim_(sim), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
+Lattice::Lattice(string runDir, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& pw, int sim) : outDir_(runDir), BC_(BC), beta_(beta), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_np1_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), startP_(0), startColor_(0), originalColor_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), dt_(4*beta_/Nt_), q3_(0), q8_(0), mu3_(mu3), mu8_(mu8), p1_(pw[0]), p2_(pw[1]), p3_(pw[2]), p4_(pw[3]), p5_(pw[4]), p6_(pw[5]), p7_(pw[6]), p8_(pw[7]), p9_(pw[8]), p10_(pw[9]), p11_(pw[10]), p12_(pw[11]), p13_(pw[12]), p14_(pw[13]), p15_(pw[14]), p16_(pw[15]), p17_(pw[16]), p18_(pw[17]), p19_(pw[18]), p20_(pw[19]), p21_(pw[20]), p22_(pw[21]), p23_(pw[22]), p24_(pw[23]), p25_(pw[24]), p26_(pw[25]), p27_(pw[26]), p28_(pw[27]), p29_(pw[28]), p30_(pw[29]), p31_(pw[30]), p32_(pw[31]), p33_(pw[32]), p34_(pw[33]), p35_(pw[34]), p36_(pw[35]), p37_(pw[36]), p38_(pw[37]), p39_(pw[38]), p40_(pw[39]), p41_(pw[40]), p42_(pw[41]), p43_(pw[42]), p44_(pw[43]), p45_(pw[44]), p46_(pw[45]), p47_(pw[46]), p48_(pw[47]), sim_(sim), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
 {	
-  stringstream outfileM, outfileC, outfileX;
-
-  outfileM << format("%s/M_wormCP2AFMmu2dplaq_BC_%s_nMeas_%i_beta_%.2f_XYT_%i_%i_%i_mu3_%.3f_mu8_%.3f_nSim_%i.dat") % outDir_ % BC_ % N_meas_ % beta_ % Nx_ % Ny_ % Nt_ % mu3_ % mu8_ % sim_;   
-  
-  Mfile_.open(outfileM.str(), ios::out);
-  
-  outfileC << format("%s/C_wormCP2AFMmu2dplaq_BC_%s_nMeas_%i_beta_%.2f_XYT_%i_%i_%i_mu3_%.3f_mu8_%.3f_nSim_%i.dat") % outDir_ % BC_ % N_meas_ % beta_ % Nx_ % Ny_ % Nt_ % mu3_ % mu8_ % sim_;   
-  
-  Cfile_.open(outfileC.str(), ios::out);
+  Mfile_.open(outDir_ + "/M_" + runningTag() + ".dat", ios::out);
+  Cfile_.open(outDir_ + "/C_" + runningTag() + ".dat", ios::out);
+  if (!Mfile_ || !Cfile_) throw InputError("cannot write the M_ and C_ files in '" + outDir_ + "'");
 
   if(BC_=="y-open") {
     cout << "y-open" << endl;
@@ -2124,7 +2125,7 @@ namespace {
 struct Options {
   string configPath;
   std::optional<string> only;
-  std::optional<string> outputDir;
+  std::optional<string> dataDir;
   std::optional<unsigned> seed;
   bool dryRun = false;
   bool help = false;
@@ -2133,17 +2134,19 @@ struct Options {
 void printUsage(ostream& os) {
   os << "Usage: wormCP2Mu2dAFMplaq <run.toml> [options]\n"
         "\n"
-        "Runs every enabled [[run]] in the TOML file, in order.\n"
+        "Runs every enabled [[run]] in the TOML file, in order. Each run adds M_<time>.dat,\n"
+        "C_<time>.dat and run_<time>.toml (time = UTC finish time) to the folder for its\n"
+        "parameters, <data dir>/<bc>_<measurements>_<beta>_<Lx>_<Ly>_<Lt>_mu3_<mu3>_mu8_<mu8>/.\n"
         "\n"
         "Options:\n"
         "  --only NAME         run only the run called NAME (even if it is disabled)\n"
-        "  --output-dir DIR    write output here instead of the file's 'output'\n"
+        "  --data-dir DIR      put the run folders under DIR instead of the file's data_dir\n"
         "  --seed N            use seed N (1 to 2147483647) for every run\n"
         "  --dry-run           print the resolved runs and exit\n"
         "  -h, --help          show this help\n"
         "\n"
         "Without a seed (here or in the file) each run draws a random one, prints it and\n"
-        "records it in run_<tag>.toml next to the output, which reproduces the run.\n";
+        "records it in run_<time>.toml, which reproduces the run.\n";
 }
 
 Options parseArgs(int argc, char** argv) {
@@ -2160,8 +2163,8 @@ Options parseArgs(int argc, char** argv) {
       o.dryRun = true;
     } else if (a == "--only") {
       o.only = value(i, a);
-    } else if (a == "--output-dir") {
-      o.outputDir = value(i, a);
+    } else if (a == "--data-dir") {
+      o.dataDir = value(i, a);
     } else if (a == "--seed") {
       const string v = value(i, a);
       char* end = nullptr;
@@ -2191,28 +2194,73 @@ unsigned randomSeed() {
 void describe(const RunConfig& r, const ProbabilityTable::Row& row) {
   cout << "run '" << r.name << "': bc=" << r.bc << " beta=" << r.beta << " lattice=" << r.Lx << "x" << r.Ly << "x"
        << r.Lt << " dt=" << r.dt() << " mu3=" << r.mu3 << " mu8=" << r.mu8 << " measurements=" << r.measurements
-       << " sim=" << r.sim << " seed=";
+       << " seed=";
   if (r.seed) cout << *r.seed; else cout << "(random)";
-  cout << "\n  probabilities: " << r.probPath << " line " << row.line << "\n  output: " << r.outDir << endl;
+  cout << "\n  probabilities: ";
+  if (r.inlineRow) cout << "inline"; else cout << *r.probPath << " line " << row.line;
+  cout << "\n  folder: " << r.runDir() << endl;
+}
+
+// Gives the finished run's files their final names, M_<stem>.dat, C_<stem>.dat and
+// run_<stem>.toml, where stem is the UTC finish time, with -2, -3, ... added if another
+// run already used that second. Uses link(), which never replaces an existing file, so
+// runs finishing at the same moment in different processes cannot overwrite each other.
+string publish(const filesystem::path& dir, const string& tmp) {
+  const string base = utcStamp();
+  auto name = [&](const string& kind, const string& stem) {
+    return (dir / (kind + "_" + stem + (kind == "run" ? ".toml" : ".dat"))).string();
+  };
+  for (int n = 1;; n++) {
+    const string stem = n == 1 ? base : base + "-" + to_string(n);
+    if (link(name("M", tmp).c_str(), name("M", stem).c_str()) != 0) {
+      if (errno == EEXIST) continue;
+      throw InputError("cannot create '" + name("M", stem) + "': " + strerror(errno));
+    }
+    for (const string kind : {"C", "run"}) {
+      if (link(name(kind, tmp).c_str(), name(kind, stem).c_str()) != 0) {
+        throw InputError("cannot create '" + name(kind, stem) + "': " + strerror(errno));
+      }
+    }
+    for (const string kind : {"M", "C", "run"}) unlink(name(kind, tmp).c_str());
+    return stem;
+  }
 }
 
 void runOne(RunConfig run, const ProbabilityTable::Row& row) {
   if (!run.seed) run.seed = randomSeed();
-  filesystem::create_directories(run.outDir);
+  const filesystem::path dir = run.runDir();
+  filesystem::create_directories(dir);
 
-  const filesystem::path record = filesystem::path(run.outDir) / ("run_" + datasetTag(run) + ".toml");
-  ofstream(record) << toToml(run);
-  cout << "seed " << *run.seed << ", settings recorded in " << record.string() << endl;
+  const filesystem::path record = dir / ("run_" + runningTag() + ".toml");
+  Provenance prov{utcNow(), std::nullopt, std::nullopt, CP2WORM_GIT_DESCRIBE};
+  {
+    ofstream out(record);
+    out << toToml(run, row, prov);
+    if (!out) throw InputError("cannot write '" + record.string() + "'");
+  }
+  cout << "seed " << *run.seed << ", writing to " << dir.string() << endl;
 
-  clock_t start = clock();
+  const auto start = chrono::steady_clock::now();
   rlxd_init(2, static_cast<int>(*run.seed));
-  Lattice system(run.outDir, run.bc, run.measurements, run.beta, run.Lx, run.Ly, run.Lt, run.mu3, run.mu8, row.p, run.sim);
+  Lattice system(dir.string(), run.bc, run.measurements, run.beta, run.Lx, run.Ly, run.Lt, run.mu3, run.mu8, row.p, 1);
   system.set_neighbours();
   system.set_plaq_origins();
   system.set_AFM_groundstate();
   system.setPatts();
   system.measure();
-  cout << "Duration: " << (clock() - start) / (double) CLOCKS_PER_SEC << endl;
+  const double wall = chrono::duration<double>(chrono::steady_clock::now() - start).count();
+  cout << "Duration: " << wall << endl;
+
+  prov.finished = utcNow();
+  prov.wallSeconds = wall;
+  {
+    ofstream out(record);
+    out << toToml(run, row, prov);
+    if (!out) throw InputError("cannot write '" + record.string() + "'");
+  }
+  const string stem = publish(dir, runningTag());
+  cout << "results: " << (dir / ("M_" + stem + ".dat")).string() << ", C_" << stem << ".dat, run_" << stem << ".toml"
+       << endl;
 }
 
 }  // namespace
@@ -2246,12 +2294,16 @@ int main(int argc, char** argv) {
         cout << "skipping disabled run '" << r.name << "'" << endl;
         continue;
       }
-      if (opt.outputDir) r.outDir = filesystem::path(*opt.outputDir).lexically_normal().string();
+      if (opt.dataDir) r.dataDir = filesystem::path(*opt.dataDir).lexically_normal().string();
       if (opt.seed) r.seed = opt.seed;
       validateRun(r);
-      auto t = tables.find(r.probPath);
-      if (t == tables.end()) t = tables.emplace(r.probPath, loadProbabilities(r.probPath)).first;
-      plan.emplace_back(r, selectRow(t->second, r.dt(), r.mu3, r.mu8));
+      const ProbabilityTable* table = nullptr;
+      if (!r.inlineRow) {
+        auto t = tables.find(*r.probPath);
+        if (t == tables.end()) t = tables.emplace(*r.probPath, loadProbabilities(*r.probPath)).first;
+        table = &t->second;
+      }
+      plan.emplace_back(r, probabilityRow(r, table));
     }
     if (plan.empty()) throw InputError("no enabled runs in " + opt.configPath);
 

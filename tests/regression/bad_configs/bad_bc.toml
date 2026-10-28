@@ -2,7 +2,6 @@
 bc = "closed"
 measurements = 10
 probabilities = "../golden/probabilities.txt"
-output = "out"
 
 [[run]]
 beta = 2.5

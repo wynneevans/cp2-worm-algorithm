@@ -5,3 +5,6 @@ CMakeUserPresets.json
 .venv/
 .ipynb_checkpoints/
 .claude/settings.local.json
+__pycache__/
+.pytest_cache/
+.ruff_cache/

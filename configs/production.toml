@@ -1,17 +1,14 @@
 # Production runs (replaces scripts/run_worm.zsh). Run all enabled runs with:
 #   build/release/src/wormCP2Mu2dAFMplaq configs/production.toml
 # Run one (even a disabled one) with --only NAME. Without a seed each run draws a
-# random one and records it in run_<tag>.toml next to the output.
+# random one and records it in run_<time>.toml next to the results.
 # Every run here has dt = 4*beta/Lt = 0.05, the row present in probabilities.txt.
 
 [defaults]
 bc            = "closed"
 measurements  = 100000
-probabilities = "probabilities.txt"   # relative to this file
-output        = "../data"
 mu3           = 0.0
 mu8           = 0.0
-sim           = 1                     # tag in the output file names (was nSim)
 
 [[run]]
 name = "closed_b10_20x4x800"

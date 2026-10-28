@@ -19,6 +19,9 @@ struct ProbabilityTable {
   std::vector<Row> rows;
 };
 
+// Equal to a relative tolerance of 1e-9 (the comparison used for table lookups).
+bool sameValue(double a, double b);
+
 ProbabilityTable loadProbabilities(const std::string& path);
 
 // The unique row matching (dt, mu3, mu8) to a relative tolerance of 1e-9.

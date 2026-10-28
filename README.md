@@ -25,12 +25,12 @@ src/tools/         analysis programs: analyseWorm, getWormXi, getXIutvNFiles
 include/cp2worm/   shared headers (jackknife.h)
 third_party/       ranlxd (Luescher's RANLUX generator, GPL) and toml++ (TOML parser, MIT)
 tests/             CTest regression tests and golden output
-tests/exact/       exact results and configs for Monte Carlo comparison
-configs/           run configs (production.toml) and the probability table
+tests/exact/       exact results (CSV) for Monte Carlo comparison; the runs are in configs/exact.toml
+configs/           run configs you edit (*.toml) and probabilities.txt, the one master probability table
 scripts/           convert_probs.py, converts old probability files
-analysis_with_python/  Python (uv, polars, seaborn) analysis of the output files
+analysis/  Python (uv, polars, seaborn) analysis of the output files
 reference/         archive: original /dev/urandom-seeded simulator (not built) and the old analysis/ notebook
-data/              simulation output (gitignored)
+data/              simulation output, one folder per parameter set (gitignored)
 ```
 
 ## Quick start
@@ -46,7 +46,7 @@ cmake --build build/release
 build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --dry-run
 
 # 4. Run one small case, writing to data/test so nothing else is overwritten
-build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --only closed_b2.5_4x4x200 --output-dir data/test
+build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --only closed_b2.5_4x4x200 --data-dir data/test
 ```
 Run it with no arguments, or with `--help`, to print the usage text.
 
@@ -64,8 +64,8 @@ Machine-specific settings (Boost location, compiler flags) belong in a
 `CMakePresets.json`'s `release` preset and then run `cmake --preset=release-local`.
 
 ## Running a simulation
-The simulator reads a TOML run file; `configs/production.toml` is the batch that used to be
-`run_worm.zsh`:
+The simulator reads a TOML run file from `configs/`; `configs/production.toml` is the batch that
+used to be `run_worm.zsh`:
 
 ```zsh
 build/release/src/wormCP2Mu2dAFMplaq configs/production.toml            # all enabled runs
@@ -76,20 +76,24 @@ build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --dry-run   # show 
 ```toml
 [defaults]
 bc            = "closed"            # or "y-open"
-measurements  = 100000
-probabilities = "probabilities.txt" # relative to this file
-output        = "../data"
+measurements  = 100000              # at least 20
 mu3 = 0.0
 mu8 = 0.0
-sim = 1                             # tag in the output file names
+# data_dir = "../data"              # output root, relative to this file (the default)
+# probabilities = "probabilities.txt"   # optional, see below
 
 [[run]]
-name    = "b2.5_4x4x200"
-beta    = 2.50
+name    = "b2.5_4x4x200"            # for --only and labels; unique within the file
+beta    = 2.50                      # at most 2 decimal places (mu3, mu8: at most 3)
 lattice = [4, 4, 200]               # Lx, Ly, Lt (Lt must be a multiple of 4)
 # seed = 42                         # optional
 # enabled = false                   # skip this run unless chosen with --only
 ```
+Results go in one folder per parameter set, `<data_dir>/<bc>_<measurements>_<beta>_<Lx>_<Ly>_<Lt>_mu3_<mu3>_mu8_<mu8>/`,
+e.g. `data/closed_100000_2.50_4_4_200_mu3_0.000_mu8_0.000/`. The folder is created by the first run
+with those parameters; later runs with the same parameters add their files to it. Because the name
+rounds beta to 2 and mu3, mu8 to 3 decimal places, a config with more precision is rejected.
+
 ### Command-line options
 ```
 wormCP2Mu2dAFMplaq <run.toml> [options]
@@ -97,85 +101,71 @@ wormCP2Mu2dAFMplaq <run.toml> [options]
 | Option | Effect |
 | --- | --- |
 | `--only NAME` | Run only the `[[run]]` called `NAME`, even if it has `enabled = false`. |
-| `--output-dir DIR` | Write output to `DIR` instead of the file's `output`. |
+| `--data-dir DIR` | Put the parameter folders under `DIR` instead of the file's `data_dir` (e.g. a scratch folder for tests). |
 | `--seed N` | Use seed `N` (1 to 2147483647) for every run. |
-| `--dry-run` | Print the resolved runs and the probability row each will use, then exit. |
+| `--dry-run` | Print the resolved runs, their folders and the probability row each will use, then exit. |
 | `-h`, `--help` | Show the usage text. |
 
 The program exits with status 1 and an `error:` message on bad input (config, probability
-table or options), before any simulation starts.
+table, existing run folder or options), before any simulation starts.
 
 Any `[defaults]` key can be overridden inside a `[[run]]`. Unknown keys are errors, so a
 typo cannot silently fall back to a default. Everything is checked before the first run
 starts.
 
-**Seeds.** With no `seed` (and no `--seed N`) each run draws a random one, prints it, and
-writes `run_<tag>.toml` next to its `.dat` files. Running that file reproduces the output
-byte for byte: `wormCP2Mu2dAFMplaq <output>/run_<tag>.toml --output-dir elsewhere`.
-
-**Probability table.** `configs/probabilities.txt` has a header line and one row per
-`(dt, mu3, mu8)`, where `dt = 4*beta/Lt`:
+**Probabilities.** `configs/probabilities.txt` is the single master table, with a header line and one
+row per `(dt, mu3, mu8)`, where `dt = 4*beta/Lt`:
 ```
 # comments start with '#'
 dt mu3 mu8 p01 p02 ... p48
 0.05 0 0 1. 0 0.0253044 ...
 ```
-Each run picks the row matching its own `4*beta/Lt`, `mu3` and `mu8`, and stops with the list
-of available rows if there is none. To simulate a new `dt`, add a row for it. Older
-headerless files (51 numbers per line) convert with
-`scripts/convert_probs.py old.txt new.txt`.
+A run finds its row from its own `4*beta/Lt`, `mu3` and `mu8`, and stops with the list of available
+rows if there is none. Without a `probabilities` key the nearest `probabilities.txt` in the config's
+folder or a parent folder is used. To simulate a new `dt`, add a row. Older headerless files convert
+with `scripts/convert_probs.py old.txt new.txt`; `scripts/merge_probs.py` merges tables.
+A run may also give its probabilities inline, as a `[run.probabilities]` table with `dt`, `mu3`, `mu8`
+and `p01` ... `p48` (this is what a run record contains).
 
 ### Output
-Each run writes, into its output directory:
+Each finished run adds three files to its parameter folder, named by the UTC time it finished:
 
 | File | Contents |
 | --- | --- |
-| `C_wormCP2AFMmu2dplaq_<tag>.dat` | Correlator measurements, comma-separated, read by `analysis/` and the tools in `src/tools/`. |
-| `M_wormCP2AFMmu2dplaq_<tag>.dat` | Per-measurement winding numbers, charges and worm counters, comma-separated. |
-| `run_<tag>.toml` | The exact settings, including the seed, that reproduce the run. |
+| `M_<time>.dat` | Per-measurement winding numbers, charges and worm counters, comma-separated. |
+| `C_<time>.dat` | Correlator measurements, comma-separated. |
+| `run_<time>.toml` | A record of what ran, not a config you edit: the settings, the seed actually used, the probabilities used (inline) and a `[provenance]` table (start and finish time, wall seconds, git description from when CMake last configured). |
 
-`<tag>` encodes the parameters, e.g.
-`BC_closed_nMeas_100000_beta_2.50_XYT_4_4_200_mu3_0.000_mu8_0.000_nSim_1`, and the analysis
-tools read the lattice size and other values back out of it, so do not rename the files.
-A run overwrites existing files with the same name; use `--output-dir` or a different
-`sim` to keep earlier results.
+`<time>` looks like `20261028-114625`. If another run with the same parameters finished in the same
+second, `-2`, `-3`, ... is added; files are never overwritten. While a run is going its files are named
+`M_running_<process id>.dat` etc., so a crashed or killed run leaves `running` files behind rather than
+something that looks finished.
+
+**Replay.** A run record is itself a valid run file and reproduces the run byte for byte:
+`wormCP2Mu2dAFMplaq data/<folder>/run_<time>.toml`. Without `--data-dir` the replay lands in the same
+folder as a new set of files. A run with no `seed` draws a random one, prints it and records it.
+
+The old flat file names (`M_wormCP2AFMmu2dplaq_BC_..._nSim_1.dat`) are no longer written. Older results
+in `data/` keep those names; `cp2-analysis` reads them when given as files, and so do the C++ tools in
+`src/tools` (which parse the names, so they cannot read the new folders).
 
 `ctest` runs a fixed-seed case and compares it byte for byte with `tests/regression/golden`,
-checks that a recorded run replays exactly, that several runs in one file match separate
-runs, and that bad configs are rejected with a clear message.
+checks that a recorded run replays exactly and that repeated runs with the same parameters share a
+folder without overwriting each other, that
+several runs in one file match separate runs, that the master table is found in a parent folder, and
+that bad configs are rejected with a clear message.
 
 ### Analysing M_ output
+The `cp2-analysis` command (package in `analysis/`, managed with uv) analyses the
+`M_*.dat` files. Run it from the repo root; inputs default to `data/` (searched for finished runs), and plots go to `<input folder>/plots`:
 ```zsh
-cd analysis_with_python && uv sync
-uv run python analyse_m.py ../data/exact     # M_*.dat files or directories
+uv sync --project analysis
+uv run --project analysis cp2-analysis summary          # magnetisation and susceptibility vs exact
+uv run --project analysis cp2-analysis raw              # block-averaged raw columns
+uv run --project analysis cp2-analysis acf              # autocorrelation function, tau_int
+uv run --project analysis cp2-analysis thermalisation   # skip scan and MSER
 ```
-With `q3`, `q8` the temporal winding charges (doubled units), `Lx` the periodic length, `N = Lx*Ly`:
-`M3 = <q3>/(2 Lx)`, `chi3 = beta <q3^2>/(4 N)`, `M8 = sqrt(3) <q8>/(2 Lx)`, `chi8 = 3 beta <q8^2>/(4 N)`.
-Errors come from a 50-block jackknife (`--nblocks`), the first 1% of rows is discarded (`--skip`).
-It writes `m_summary.csv`, `susceptibility.png` and `magnetisation.png` (MC and exact values from
-`tests/exact/exactCP2_results.csv` on the same axes) to `--out` (default `data/exact/plots`).
-
-`plot_m_raw.py` draws the raw columns for checking thermalisation and autocorrelation by eye: each
-panel is one column, with every `--block` (default 100) measurements averaged into one point and the
-whole-run mean dashed. A drift at the start suggests thermalisation, slow wander suggests autocorrelation.
-```zsh
-uv run python plot_m_raw.py ../data/exact    # writes raw_<lattice>_<bc>.png to data/exact/plots
-```
-
-`plot_m_acf.py` draws the autocorrelation function of each column and estimates the integrated
-autocorrelation time `tau_int = 1/2 + sum rho(t)` with Sokal's automatic window (dashed line);
-it writes `acf_<lattice>_<bc>.png` and `tau_int.csv`. Blocks used for errors should be much longer than `2 tau_int`.
-```zsh
-uv run python plot_m_acf.py ../data/exact [--maxlag 50]
-```
-
-`thermalisation.py` helps choose how many initial measurements to skip: `skipscan_<lattice>_<bc>.png` shows
-chi3 and M3 against the number skipped (they should be flat once past the transient, exact value dashed), and
-`mser.csv` gives the MSER-5 truncation point per column. MSER is noisy for rare-spike columns such as `w3x`,
-so judge by the skip scan and the q3/q8 columns.
-```zsh
-uv run python thermalisation.py ../data/exact
-```
+See [analysis/README.md](analysis/README.md) for the estimators, options and outputs.
 
 ### Notes
 - Boost 1.74 needs `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` under C++17 with libc++

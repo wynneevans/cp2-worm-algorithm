@@ -1,41 +1,62 @@
-# An unseeded run records its seed; replaying the recorded file must reproduce
-# the output byte for byte. Inputs: SIM, CONFIG, WORK_DIR.
+# An unseeded run records its seed and probabilities in run_<time>.toml; replaying
+# that file must reproduce the output byte for byte. A second run with the same
+# parameters must land in the same folder without overwriting the first.
+# Inputs: SIM, CONFIG, WORK_DIR.
 file(REMOVE_RECURSE ${WORK_DIR})
-foreach(d first replay)
-  file(MAKE_DIRECTORY ${WORK_DIR}/${d})
-endforeach()
+set(folder_name closed_200_2.50_4_4_200_mu3_0.000_mu8_0.000)
+set(first ${WORK_DIR}/first/${folder_name})
 
-execute_process(COMMAND ${SIM} ${CONFIG} --output-dir ${WORK_DIR}/first
-                RESULT_VARIABLE rc OUTPUT_QUIET)
+execute_process(COMMAND ${SIM} ${CONFIG} --data-dir ${WORK_DIR}/first RESULT_VARIABLE rc OUTPUT_QUIET)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "first run failed (${rc})")
 endif()
 
-file(GLOB record ${WORK_DIR}/first/run_*.toml)
-list(LENGTH record n)
+file(GLOB records ${first}/run_*.toml)
+list(LENGTH records n)
 if(NOT n EQUAL 1)
-  message(FATAL_ERROR "expected exactly one run_*.toml record, found ${n}")
+  message(FATAL_ERROR "expected one run_*.toml in ${first}, found ${n}")
+endif()
+file(GLOB leftovers ${first}/*running*)
+if(leftovers)
+  message(FATAL_ERROR "temporary files left behind: ${leftovers}")
+endif()
+list(GET records 0 record)
+string(REGEX REPLACE ".*/run_(.*)\\.toml$" "\\1" stem ${record})
+if(NOT stem MATCHES "^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9](-[0-9]+)?$")
+  message(FATAL_ERROR "file stem '${stem}' is not a UTC timestamp")
 endif()
 file(READ ${record} text)
-if(NOT text MATCHES "seed = [0-9]+")
-  message(FATAL_ERROR "record has no seed:\n${text}")
-endif()
+foreach(expected "seed = [0-9]+" "\\[run.probabilities\\]" "p48 = " "finished = " "wall_seconds = " "git = ")
+  if(NOT text MATCHES "${expected}")
+    message(FATAL_ERROR "record lacks '${expected}':\n${text}")
+  endif()
+endforeach()
 
-execute_process(COMMAND ${SIM} ${record} --output-dir ${WORK_DIR}/replay
-                RESULT_VARIABLE rc OUTPUT_QUIET)
+# Replay into another data dir: same folder name, identical M_ and C_ contents.
+execute_process(COMMAND ${SIM} ${record} --data-dir ${WORK_DIR}/replay RESULT_VARIABLE rc OUTPUT_QUIET)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "replay failed (${rc})")
 endif()
-
-file(GLOB dats RELATIVE ${WORK_DIR}/first ${WORK_DIR}/first/*.dat)
-list(LENGTH dats n)
-if(NOT n EQUAL 2)
-  message(FATAL_ERROR "expected C_ and M_ files, found ${n}")
-endif()
-foreach(f ${dats})
-  execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files ${WORK_DIR}/first/${f} ${WORK_DIR}/replay/${f}
+foreach(kind M C)
+  file(GLOB replayed ${WORK_DIR}/replay/${folder_name}/${kind}_*.dat)
+  execute_process(COMMAND ${CMAKE_COMMAND} -E compare_files ${first}/${kind}_${stem}.dat ${replayed}
                   RESULT_VARIABLE differs)
   if(differs)
-    message(FATAL_ERROR "${f} differs between the run and its replay")
+    message(FATAL_ERROR "${kind}_ file differs between the run and its replay")
+  endif()
+endforeach()
+
+# Two more runs with the same parameters, possibly in the same second: same folder, nothing overwritten.
+foreach(i 1 2)
+  execute_process(COMMAND ${SIM} ${CONFIG} --data-dir ${WORK_DIR}/first RESULT_VARIABLE rc OUTPUT_QUIET)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "repeat run ${i} failed (${rc})")
+  endif()
+endforeach()
+foreach(kind M C)
+  file(GLOB files ${first}/${kind}_*.dat)
+  list(LENGTH files n)
+  if(NOT n EQUAL 3)
+    message(FATAL_ERROR "expected 3 ${kind}_ files after three runs, found ${n}")
   endif()
 endforeach()
