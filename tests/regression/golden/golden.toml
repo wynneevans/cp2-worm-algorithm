@@ -1,4 +1,4 @@
-# Fixed-seed case behind golden/M.dat and golden/C.dat. The test overrides the data
+# Fixed-seed cases behind golden/M_<name>.dat and golden/C_<name>.dat. The test overrides the data
 # directory and (for the negative test) the seed on the command line.
 [defaults]
 bc            = "closed"
@@ -9,4 +9,36 @@ probabilities = "probabilities.txt"
 name    = "golden"
 beta    = 2.50
 lattice = [4, 4, 200]
+seed    = 42
+
+# y-open has its own neighbour set-up, with separate branches for even and odd Ly.
+[[run]]
+name    = "yopen_even"
+bc      = "y-open"
+beta    = 2.50
+lattice = [4, 2, 200]
+seed    = 42
+
+[[run]]
+name    = "yopen_odd"
+bc      = "y-open"
+beta    = 2.50
+lattice = [4, 3, 200]
+seed    = 42
+
+# mu enters only through the probability row, which changes the moves the worm takes.
+[[run]]
+name    = "yopen_mu3"
+bc      = "y-open"
+beta    = 2.50
+lattice = [4, 4, 200]
+mu3     = 0.2
+seed    = 42
+
+[[run]]
+name    = "yopen_mu8"
+bc      = "y-open"
+beta    = 2.50
+lattice = [4, 4, 200]
+mu8     = 0.2
 seed    = 42

@@ -1,22 +1,24 @@
-# Runs the simulator with a fixed seed and compares its M_ and C_ files with the
-# golden files. Inputs: SIM, GOLDEN_DIR, WORK_DIR, SEED, EXPECT_MATCH.
+# Runs one [[run]] of golden/golden.toml with a fixed seed and compares its M_ and C_ files
+# with golden/M_<NAME>.dat and golden/C_<NAME>.dat.
+# Inputs: SIM, GOLDEN_DIR, WORK_DIR, NAME, FOLDER (its parameter folder), SEED, EXPECT_MATCH.
 #
-# To regenerate the golden after an intended change to the physics:
+# To regenerate the golden files after an intended change to the physics:
 #   wormCP2Mu2dAFMplaq tests/regression/golden/golden.toml --data-dir /tmp/g --seed 42
-#   then copy /tmp/g/<folder>/M_<time>.dat and C_<time>.dat to tests/regression/golden/M.dat and C.dat
+#   then copy each /tmp/g/<folder>/M_<time>.dat and C_<time>.dat to tests/regression/golden/M_<name>.dat
+#   and C_<name>.dat (the run names and folders are listed in tests/CMakeLists.txt)
 
 file(REMOVE_RECURSE ${WORK_DIR})
 file(MAKE_DIRECTORY ${WORK_DIR})
 
 execute_process(
-  COMMAND ${SIM} ${GOLDEN_DIR}/golden.toml --data-dir ${WORK_DIR} --seed ${SEED}
+  COMMAND ${SIM} ${GOLDEN_DIR}/golden.toml --only ${NAME} --data-dir ${WORK_DIR} --seed ${SEED}
   RESULT_VARIABLE rc
   OUTPUT_QUIET)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "simulator exited with ${rc}")
 endif()
 
-set(folder ${WORK_DIR}/closed_1000_2.50_4_4_200_mu3_0.000_mu8_0.000)
+set(folder ${WORK_DIR}/${FOLDER})
 set(all_match TRUE)
 foreach(kind C M)
   file(GLOB out ${folder}/${kind}_*.dat)
@@ -25,12 +27,12 @@ foreach(kind C M)
     message(FATAL_ERROR "expected one ${kind}_*.dat in ${folder}, found ${n}")
   endif()
   execute_process(
-    COMMAND ${CMAKE_COMMAND} -E compare_files ${GOLDEN_DIR}/${kind}.dat ${out}
+    COMMAND ${CMAKE_COMMAND} -E compare_files ${GOLDEN_DIR}/${kind}_${NAME}.dat ${out}
     RESULT_VARIABLE differs
     OUTPUT_QUIET ERROR_QUIET)
   if(differs)
     set(all_match FALSE)
-    message(STATUS "${kind}_ file differs from golden (seed ${SEED})")
+    message(STATUS "${kind}_ file differs from golden (${NAME}, seed ${SEED})")
   endif()
 endforeach()
 

@@ -1,6 +1,6 @@
 # cp2-worm-algorithm-cpp
 
-A worm-algorithm Monte Carlo simulator for the CP(2) spin system in C++17 (`wormCP2Mu2dAFMplaq`).
+A worm-algorithm Monte Carlo simulator for the CP(2) spin system in C++20 (`wormCP2Mu2dAFMplaq`).
 The Python package `cp2analysis` (CLI `cp2-analysis`, in `analysis/`) analyses its output.
 Legacy C++ analysis tools live in `src/tools/`.
 
@@ -15,17 +15,17 @@ Legacy C++ analysis tools live in `src/tools/`.
 - `tests/exact/` - exact-results CSV, and the `exact_*` ctest physics checks (`exact_runs.toml`, run through `cp2-analysis check-exact`, so they need uv)
 - `analysis/` - Python package; tests in `analysis/tests/`
 - `reference/` - frozen original simulator and the old analysis notebook. **Do not edit.**
-- `scripts/` - `convert_probs.py`, `merge_probs.py`
+- `scripts/` - `convert_probs.py`, `merge_probs.py`, `convert_mathematica_probs.py` (notebook output to table rows)
 - `build/` - build folders. **Never commit, never edit by hand.**
 
 ## Commands
 
 ### C++ (run from the repo root)
-- Configure: `cmake --preset=release-local` (machine-specific, from the gitignored `CMakeUserPresets.json`; CMake 3.19, presets are configure-only)
+- Configure: `cmake --preset=release-local` (machine-specific, from the gitignored `CMakeUserPresets.json`; presets are version 3, so CMake 3.21+; this machine has CMake 4 from Homebrew; the presets are configure-only)
 - Build: `cmake --build build/release`
 - Test: `(cd build/release && ctest --output-on-failure -j4)` (the `exact` tests take ~30 s; `-LE exact` skips them)
 - Dry run a config: `build/release/src/wormCP2Mu2dAFMplaq configs/<file>.toml --dry-run`
-- macOS: a stale `/Library/Developer/CommandLineTools/usr/include/c++/v1` hides the SDK headers; the local preset passes `-nostdinc++ -isystem $(xcrun --show-sdk-path)/usr/include/c++/v1`.
+- macOS: if `<iostream>` is not found, a stale `/Library/Developer/CommandLineTools/usr/include/c++/v1` is hiding the SDK headers; reinstall the Command Line Tools (fixed on this machine on 2026-10-28, so the local preset no longer needs `-nostdinc++`).
 
 ### Python (run from the repo root)
 - Setup: `uv sync --project analysis`
@@ -36,10 +36,10 @@ Legacy C++ analysis tools live in `src/tools/`.
 Before saying a task is done, build and run the tests for whichever side you changed (C++: build + ctest; Python: pytest + ruff).
 
 ## C++ conventions
-- Standard: C++17 (C++20 clashes: `std::format` vs `boost::format` under `using namespace`).
+- Standard: C++20. Files with `using namespace std;` and `using namespace boost;` must write `boost::format` (plain `format` is ambiguous with `std::format`).
 - Bad user input (config, probability table, options) throws `InputError`, which `main` reports as `error: ...` with exit status 1. Validate everything before the first run starts.
 - New config keys need validation and a `bad_config_*` test in `tests/CMakeLists.txt`.
-- The golden test compares the M_ and C_ files with `tests/regression/golden/{M,C}.dat` byte for byte. Keep them identical unless the physics is meant to change; then regenerate as described in `tests/regression/run_golden.cmake` and say so.
+- The golden tests run each case in `tests/regression/golden/golden.toml` (closed 4x4; y-open with even and odd Ly; y-open at mu3 = 0.2 and at mu8 = 0.2) and compare the M_ and C_ files with `golden/{M,C}_<name>.dat` byte for byte. They are the safety net for refactoring `main.cpp`. Keep them identical unless the physics is meant to change; then regenerate as described in `tests/regression/run_golden.cmake` and say so.
 - `main.cpp` is legacy (globals, `using namespace`, duplicated pattern tables). Don't refactor it unasked.
 - The random number generator (ranlxd) has global state: one chain per process. `--jobs N` forks one child process per run (`runParallel` in `main.cpp`).
 

@@ -51,7 +51,7 @@ build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --only closed_b2.5_
 Run it with no arguments, or with `--help`, to print the usage text.
 
 ## Building
-Requires CMake 3.19+, a C++17 compiler and Boost 1.74+ (headers only).
+Requires CMake 3.19+ (3.21+ to use the presets, e.g. `brew install cmake`), a C++20 compiler (Apple clang 17+, GCC 11+ or clang 14+) and Boost 1.74+ (headers only).
 
 ```zsh
 cmake -S . -B build/release -DBoost_ROOT=/path/to/boost
@@ -138,7 +138,10 @@ dt mu3 mu8 p01 p02 ... p48
 A run finds its row from its own `4*beta/Lt`, `mu3` and `mu8`, and stops with the list of available
 rows if there is none. Without a `probabilities` key the nearest `probabilities.txt` in the config's
 folder or a parent folder is used. To simulate a new `dt`, add a row. Older headerless files convert
-with `scripts/convert_probs.py old.txt new.txt`; `scripts/merge_probs.py` merges tables.
+with `scripts/convert_probs.py old.txt new.txt`; `scripts/merge_probs.py` merges tables. Weights copied from
+the Mathematica notebook's output (a potential, then 12 `SequenceForm[...]` lines, per value) convert with
+`scripts/convert_mathematica_probs.py output.txt --dt 0.05 --vary mu8`; the mu8 = 0.01 to 0.3 rows came
+from there.
 A run may also give its probabilities inline, as a `[run.probabilities]` table with `dt`, `mu3`, `mu8`
 and `p01` ... `p48` (this is what a run record contains).
 
@@ -165,7 +168,8 @@ The old flat file names (`M_wormCP2AFMmu2dplaq_BC_..._nSim_1.dat`) are no longer
 results with those names are in `data/old_macbook_run/`. Only the C++ tools in `src/tools` read them
 (they parse the names, so they cannot read the new folders); `cp2-analysis` reads the new layout only.
 
-`ctest` runs a fixed-seed case and compares it byte for byte with `tests/regression/golden`,
+`ctest` runs five fixed-seed cases (closed, y-open with even and odd `Ly`, y-open at mu3 = 0.2 and at mu8 = 0.2) and
+compares them byte for byte with `tests/regression/golden`,
 checks that a recorded run replays exactly and that repeated runs with the same parameters share a
 folder without overwriting each other, that
 several runs in one file match separate runs, that the master table is found in a parent folder, and
@@ -190,7 +194,7 @@ uv run --project analysis cp2-analysis check-exact --beta 0.05 --typed   # pass/
 See [analysis/README.md](analysis/README.md) for the estimators, options and outputs.
 
 ### Notes
-- Boost 1.74 needs `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` under C++17 with libc++
+- Boost 1.74 needs `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` with libc++ under C++17 and later
   (set in `src/CMakeLists.txt`); it can be dropped after upgrading Boost.
 - If the compiler cannot find `<iostream>` on macOS, a stale
   `/Library/Developer/CommandLineTools/usr/include/c++/v1` is shadowing the SDK headers.

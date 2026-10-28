@@ -2066,7 +2066,7 @@ void Lattice::measure() {
     q3_ += wT*w3xAdd_; 
     q8_ += wT*w8xAdd_;
     
-    Mfile_ << format("%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15s\n") % w3x % w8x % w3y % w8y % q3_ % q8_ % l_ % lp_ % lm_ % tail_;   
+    Mfile_ << boost::format("%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15f,%-15s\n") % w3x % w8x % w3y % w8y % q3_ % q8_ % l_ % lp_ % lm_ % tail_;   
     
     if (i%(N_meas_/20) == 0) {
      
@@ -2088,7 +2088,7 @@ void Lattice::measure() {
       	  valvp1v0 = cXTvp1v0_[j + (k*Nx_)];
       	  valvm1v0 = cXTvm1v0_[j + (k*Nx_)];
       	  
-      	  Cfile_ << format("%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d\n") % valt0tp1 % valt0tm1 % valtp1t0 % valtm1t0 % valu0up1 % valu0um1 % valup1u0 % valum1u0 % valv0vp1 % valv0vm1 % valvp1v0 % valvm1v0; 
+      	  Cfile_ << boost::format("%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d,%-20.15d\n") % valt0tp1 % valt0tm1 % valtp1t0 % valtm1t0 % valu0up1 % valu0um1 % valup1u0 % valum1u0 % valv0vp1 % valv0vm1 % valvp1v0 % valvm1v0; 
 
       	}
       }

@@ -1,7 +1,7 @@
 # Runs compared with the exact results in exactCP2_results.csv by the exact_* tests (see
 # tests/CMakeLists.txt). beta = 0.05 and Lt = 4 give dt = 0.05; probabilities come from the master
-# table, which only has dt = 0.05 rows with mu8 = 0 and mu3 <= 0.4, so the exact results at
-# mu3 >= 0.5 or mu8 != 0 cannot be simulated yet.
+# table, which only has dt = 0.05 rows with mu3 <= 0.4 (mu8 = 0) or mu8 <= 0.3 (mu3 = 0), so the
+# exact results at mu3 >= 0.5 or mu8 >= 0.5 cannot be simulated yet.
 [defaults]
 measurements  = 1000000
 beta          = 0.05
@@ -45,3 +45,17 @@ bc      = "y-open"
 lattice = [2, 3, 4]
 mu3     = 0.2
 seed    = 106
+
+[[run]]
+name    = "2x2_closed_mu8_0.1"
+bc      = "closed"
+lattice = [2, 2, 4]
+mu8     = 0.1
+seed    = 107
+
+[[run]]
+name    = "2x2_closed_mu8_0.2"
+bc      = "closed"
+lattice = [2, 2, 4]
+mu8     = 0.2
+seed    = 108

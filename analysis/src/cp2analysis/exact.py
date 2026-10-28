@@ -10,13 +10,16 @@ QUANTITIES = {"chi": "susceptibility", "M": "magnetization"}
 
 
 def load_exact(path: str | Path, typed: bool = False) -> pl.DataFrame:
-    """Labelled-file rows, de-duplicated (the 'plotted data' rows repeat them).
+    """Labelled-file rows, de-duplicated.
+
+    Rows marked 'labelled file (plotted data)' repeat labelled values where both exist, and are
+    the only exact values for 2x2 closed at small mu8 and at beta != 0.05.
 
     With `typed`, also the values typed into the notebook (status 'typed in notebook...'), which
     are the only exact values for some parameters (2x3 y-open at mu3 = 0.03 to 0.2).
     """
     df = pl.read_csv(path, schema_overrides={"beta_label": pl.Float64, "mu3": pl.Float64, "mu8": pl.Float64})
-    keep = pl.col("status") == "labelled file"
+    keep = pl.col("status").str.starts_with("labelled file")
     if typed:
         keep = keep | pl.col("status").str.starts_with("typed in notebook")
     df = df.filter(keep)

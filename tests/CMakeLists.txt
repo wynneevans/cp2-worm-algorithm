@@ -1,22 +1,32 @@
 set(GOLDEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/regression/golden)
 
-# A run with the golden seed must reproduce the committed .dat files exactly.
-add_test(NAME golden_seed42
-  COMMAND ${CMAKE_COMMAND}
-    -DSIM=$<TARGET_FILE:wormCP2Mu2dAFMplaq>
-    -DGOLDEN_DIR=${GOLDEN_DIR}
-    -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/golden_seed42
-    -DSEED=42 -DEXPECT_MATCH=ON
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/regression/run_golden.cmake)
+# A run with the golden seed must reproduce golden/M_<name>.dat and C_<name>.dat exactly;
+# a different seed must not (guards against a vacuous comparison).
+function(add_golden_test name folder)
+  foreach(seed 42 43)
+    if(seed EQUAL 42)
+      set(test golden_${name})
+      set(match ON)
+    else()
+      set(test golden_${name}_seed43_differs)
+      set(match OFF)
+    endif()
+    add_test(NAME ${test}
+      COMMAND ${CMAKE_COMMAND}
+        -DSIM=$<TARGET_FILE:wormCP2Mu2dAFMplaq>
+        -DGOLDEN_DIR=${GOLDEN_DIR}
+        -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/${test}
+        -DNAME=${name} -DFOLDER=${folder}
+        -DSEED=${seed} -DEXPECT_MATCH=${match}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/regression/run_golden.cmake)
+  endforeach()
+endfunction()
 
-# Guard against a vacuous comparison: a different seed must NOT match.
-add_test(NAME golden_seed43_differs
-  COMMAND ${CMAKE_COMMAND}
-    -DSIM=$<TARGET_FILE:wormCP2Mu2dAFMplaq>
-    -DGOLDEN_DIR=${GOLDEN_DIR}
-    -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/golden_seed43
-    -DSEED=43 -DEXPECT_MATCH=OFF
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/regression/run_golden.cmake)
+add_golden_test(golden     closed_1000_2.50_4_4_200_mu3_0.000_mu8_0.000)
+add_golden_test(yopen_even y-open_1000_2.50_4_2_200_mu3_0.000_mu8_0.000)
+add_golden_test(yopen_odd  y-open_1000_2.50_4_3_200_mu3_0.000_mu8_0.000)
+add_golden_test(yopen_mu3  y-open_1000_2.50_4_4_200_mu3_0.200_mu8_0.000)
+add_golden_test(yopen_mu8  y-open_1000_2.50_4_4_200_mu3_0.000_mu8_0.200)
 
 set(REGRESSION_DIR ${CMAKE_CURRENT_SOURCE_DIR}/regression)
 
@@ -113,6 +123,7 @@ function(add_exact_test name)
 endfunction()
 
 # One per [[run]] in exact/exact_runs.toml.
-foreach(name 2x2_closed 2x2_yopen 2x3_yopen 2x3_yopen_mu3_0.03 2x3_yopen_mu3_0.1 2x3_yopen_mu3_0.2)
+foreach(name 2x2_closed 2x2_yopen 2x3_yopen 2x3_yopen_mu3_0.03 2x3_yopen_mu3_0.1 2x3_yopen_mu3_0.2
+             2x2_closed_mu8_0.1 2x2_closed_mu8_0.2)
   add_exact_test(${name})
 endforeach()
