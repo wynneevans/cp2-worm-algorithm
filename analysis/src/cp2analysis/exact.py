@@ -9,10 +9,17 @@ from .runs import RunInfo
 QUANTITIES = {"chi": "susceptibility", "M": "magnetization"}
 
 
-def load_exact(path: str | Path) -> pl.DataFrame:
-    """Labelled-file rows, de-duplicated (the 'plotted data' rows repeat them)."""
+def load_exact(path: str | Path, typed: bool = False) -> pl.DataFrame:
+    """Labelled-file rows, de-duplicated (the 'plotted data' rows repeat them).
+
+    With `typed`, also the values typed into the notebook (status 'typed in notebook...'), which
+    are the only exact values for some parameters (2x3 y-open at mu3 = 0.03 to 0.2).
+    """
     df = pl.read_csv(path, schema_overrides={"beta_label": pl.Float64, "mu3": pl.Float64, "mu8": pl.Float64})
-    df = df.filter(pl.col("status") == "labelled file")
+    keep = pl.col("status") == "labelled file"
+    if typed:
+        keep = keep | pl.col("status").str.starts_with("typed in notebook")
+    df = df.filter(keep)
     df = df.unique(subset=["lattice", "boundary", "beta_label", "mu3", "mu8", "quantity"], keep="first")
     return df.select("lattice", "boundary", "beta_label", "mu3", "mu8", "quantity", "value")
 

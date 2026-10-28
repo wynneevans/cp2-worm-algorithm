@@ -8,7 +8,7 @@ import polars as pl
 import seaborn as sns
 
 from .. import plotting
-from ..runs import SERIES, RunInfo, read_m, run_info
+from ..runs import SERIES, RunInfo, read_m
 from ..stats import SOKAL_C, acf, tau_int
 from . import _common
 
@@ -33,10 +33,8 @@ def compute(run: RunInfo, df: pl.DataFrame) -> tuple[pl.DataFrame, dict[str, np.
     table = pl.DataFrame(
         rows, schema_overrides={"tau_int": pl.Float64, "tau_err": pl.Float64, "window": pl.Int64}
     )
-    table = table.with_columns(
-        pl.lit(run.name).alias("name"), pl.lit(run.lattice).alias("lattice"), pl.lit(run.bc).alias("boundary")
-    )
-    return table.select("name", "lattice", "boundary", "column", "tau_int", "tau_err", "window"), rhos
+    table = table.with_columns(pl.lit(run.label).alias("label"), pl.lit(run.folder).alias("folder"))
+    return table.select("label", "folder", "column", "tau_int", "tau_err", "window"), rhos
 
 
 def plot(run: RunInfo, table: pl.DataFrame, rhos: dict, maxlag: int, outdir: Path) -> None:
@@ -65,18 +63,17 @@ def plot(run: RunInfo, table: pl.DataFrame, rhos: dict, maxlag: int, outdir: Pat
     for ax in axes[:, 0]:
         ax.set_ylabel("autocorrelation")
     fig.suptitle(
-        f"{run.name} ({run.lattice} {run.bc}, beta={run.beta}): "
+        f"{run.label} ({run.size} {run.bc}, beta={run.beta}, mu3={run.mu3}): "
         f"autocorrelation (dashed: Sokal window, C={SOKAL_C:g})"
     )
-    plotting.save(fig, outdir / f"acf_{run.name}.png")
+    plotting.save(fig, outdir / f"acf_{run.label}.png")
 
 
 def run(args: argparse.Namespace) -> None:
-    files, out = _common.resolve(args)
+    runs, out = _common.resolve(args)
     tables = []
-    for f in files:
-        info = run_info(f)
-        df = read_m(f)
+    for info in runs:
+        df = read_m(info.path)
         df = df.slice(int(args.skip * df.height))
         table, rhos = compute(info, df)
         plot(info, table, rhos, args.maxlag, out)

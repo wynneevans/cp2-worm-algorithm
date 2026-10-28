@@ -203,7 +203,7 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
     defaults = d->as_table();
     if (!defaults) throw InputError(path + ": [defaults] must be a table");
     rejectUnknownKeys(*defaults,
-                      {"bc", "measurements", "probabilities", "data_dir", "mu3", "mu8", "seed"},
+                      {"bc", "measurements", "beta", "lattice", "probabilities", "data_dir", "mu3", "mu8", "seed"},
                       "[defaults]");
   }
 
@@ -220,9 +220,11 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
     r.name = fetch<std::string>(*t, "name", "run #" + std::to_string(i + 1)).value_or("run" + std::to_string(i + 1));
     const std::string where = "run '" + r.name + "'";
     rejectUnknownKeys(*t, {"name", "bc", "measurements", "beta", "lattice", "probabilities", "data_dir", "mu3", "mu8",
-                           "seed", "enabled"},
+                           "seed", "enabled", "repeats"},
                       where);
-    if (!names.insert(r.name).second) throw InputError(where + ": name is used by more than one run");
+    r.group = r.name;
+    const int64_t repeats = fetch<int64_t>(*t, "repeats", where).value_or(1);
+    if (repeats < 1) throw InputError(where + ": repeats must be at least 1");
 
     auto need = [&](auto value, const char* key) {
       if (!value) throw InputError(where + ": missing required key '" + key + "'");
@@ -241,7 +243,10 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
       r.seed = static_cast<unsigned>(*s);
     }
 
-    const toml::array* lat = (*t)["lattice"].as_array();
+    const toml::node* latNode = t->get("lattice");
+    if (!latNode && defaults) latNode = defaults->get("lattice");
+    if (!latNode) throw InputError(where + ": missing required key 'lattice'");
+    const toml::array* lat = latNode->as_array();
     if (!lat || lat->size() != 3) throw InputError(where + ": 'lattice' must be an array [Lx, Ly, Lt]");
     int dims[3];
     for (size_t k = 0; k < 3; k++) {
@@ -267,7 +272,14 @@ std::vector<RunConfig> loadConfig(const std::string& path) {
     }
 
     validateRun(r);
-    out.push_back(r);
+    for (int64_t k = 1; k <= repeats; k++) {
+      RunConfig copy = r;
+      if (repeats > 1) copy.name = r.name + "_rep" + std::to_string(k);
+      if (!names.insert(copy.name).second) {
+        throw InputError("run '" + copy.name + "': name is used by more than one run");
+      }
+      out.push_back(copy);
+    }
   }
   return out;
 }

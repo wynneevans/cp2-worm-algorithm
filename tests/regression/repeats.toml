@@ -1,0 +1,16 @@
+# Three repeats of one run, plus another run (for the repeats_* tests; run with --dry-run).
+[defaults]
+bc = "closed"
+measurements = 10
+probabilities = "golden/probabilities.txt"
+
+[[run]]
+name = "rep"
+beta = 2.5
+lattice = [4, 4, 200]
+repeats = 3
+
+[[run]]
+name = "other"
+beta = 5.0
+lattice = [8, 4, 400]

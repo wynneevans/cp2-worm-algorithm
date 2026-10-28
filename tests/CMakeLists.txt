@@ -56,9 +56,63 @@ add_bad_config_test(inline_missing_key "missing 'p48'")
 add_bad_config_test(no_probabilities "no probabilities: set 'probabilities'")
 add_bad_config_test(beta_precision "beta may have at most 2 decimal places")
 add_bad_config_test(mu_precision "mu3 and mu8 may have at most 3 decimal places")
+add_bad_config_test(repeats_zero "repeats must be at least 1")
+add_bad_config_test(repeats_same_seed "runs 'r_rep1' and 'r_rep2' have the same parameters and seed 5")
+add_bad_config_test(same_seed "runs 'a' and 'b' have the same parameters and seed 5")
+
+add_test(NAME bad_option_jobs
+  COMMAND wormCP2Mu2dAFMplaq ${REGRESSION_DIR}/two_runs.toml --jobs 0)
+set_tests_properties(bad_option_jobs PROPERTIES PASS_REGULAR_EXPRESSION "error: --jobs must be")
+
+# repeats = N expands into NAME_rep1 .. NAME_repN; --only NAME selects all of them.
+add_test(NAME repeats_expand
+  COMMAND wormCP2Mu2dAFMplaq ${REGRESSION_DIR}/repeats.toml --dry-run)
+set_tests_properties(repeats_expand PROPERTIES
+  PASS_REGULAR_EXPRESSION "run 'rep_rep1'.*run 'rep_rep2'.*run 'rep_rep3'.*run 'other'")
+add_test(NAME repeats_only_group
+  COMMAND wormCP2Mu2dAFMplaq ${REGRESSION_DIR}/repeats.toml --only rep --dry-run)
+set_tests_properties(repeats_only_group PROPERTIES
+  PASS_REGULAR_EXPRESSION "run 'rep_rep1'.*run 'rep_rep3'" FAIL_REGULAR_EXPRESSION "run 'other'")
+
+# beta and lattice may come from [defaults]; a run can override them.
+add_test(NAME defaults_beta_lattice
+  COMMAND wormCP2Mu2dAFMplaq ${REGRESSION_DIR}/scan_defaults.toml --dry-run)
+set_tests_properties(defaults_beta_lattice PROPERTIES
+  PASS_REGULAR_EXPRESSION "run 'from_defaults': bc=closed beta=2.5 lattice=4x4x200.*run 'overridden': bc=closed beta=5 lattice=8x4x400")
 
 # With no 'probabilities' key the nearest probabilities.txt in a parent folder is used.
 add_test(NAME master_table_found_in_parent
   COMMAND wormCP2Mu2dAFMplaq ${REGRESSION_DIR}/ancestor/sub/found.toml --dry-run)
 set_tests_properties(master_table_found_in_parent PROPERTIES
   PASS_REGULAR_EXPRESSION "probabilities: .*ancestor/probabilities.txt line")
+
+# Physics: tiny lattices (10^6 measurements, a few seconds each) compared with exact results by
+# `cp2-analysis check-exact`, so they need uv and the analysis package (uv sync --project analysis).
+# Without uv they are listed but disabled. Labelled 'exact': skip them with `ctest -LE exact`, run
+# only them with `ctest -L exact`.
+set(EXACT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/exact)
+find_program(UV_EXECUTABLE uv)
+if(NOT UV_EXECUTABLE)
+  message(STATUS "uv not found: the exact_* tests are disabled")
+endif()
+function(add_exact_test name)
+  add_test(NAME exact_${name}
+    COMMAND ${CMAKE_COMMAND}
+      -DSIM=$<TARGET_FILE:wormCP2Mu2dAFMplaq>
+      -DUV=${UV_EXECUTABLE}
+      -DANALYSIS=${PROJECT_SOURCE_DIR}/analysis
+      -DCONFIG=${EXACT_DIR}/exact_runs.toml
+      -DCSV=${EXACT_DIR}/exactCP2_results.csv
+      -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/exact_${name}
+      -DNAME=${name}
+      -P ${EXACT_DIR}/run_exact.cmake)
+  set_tests_properties(exact_${name} PROPERTIES LABELS exact)
+  if(NOT UV_EXECUTABLE)
+    set_tests_properties(exact_${name} PROPERTIES DISABLED TRUE)
+  endif()
+endfunction()
+
+# One per [[run]] in exact/exact_runs.toml.
+foreach(name 2x2_closed 2x2_yopen 2x3_yopen 2x3_yopen_mu3_0.03 2x3_yopen_mu3_0.1 2x3_yopen_mu3_0.2)
+  add_exact_test(${name})
+endforeach()

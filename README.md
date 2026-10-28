@@ -77,6 +77,7 @@ build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --dry-run   # show 
 [defaults]
 bc            = "closed"            # or "y-open"
 measurements  = 100000              # at least 20
+# beta, lattice                     # may also go here, for scans that share them
 mu3 = 0.0
 mu8 = 0.0
 # data_dir = "../data"              # output root, relative to this file (the default)
@@ -87,6 +88,7 @@ name    = "b2.5_4x4x200"            # for --only and labels; unique within the f
 beta    = 2.50                      # at most 2 decimal places (mu3, mu8: at most 3)
 lattice = [4, 4, 200]               # Lx, Ly, Lt (Lt must be a multiple of 4)
 # seed = 42                         # optional
+# repeats = 4                       # optional: 4 independent copies, named b2.5_4x4x200_rep1 ... _rep4
 # enabled = false                   # skip this run unless chosen with --only
 ```
 Results go in one folder per parameter set, `<data_dir>/<bc>_<measurements>_<beta>_<Lx>_<Ly>_<Lt>_mu3_<mu3>_mu8_<mu8>/`,
@@ -100,16 +102,29 @@ wormCP2Mu2dAFMplaq <run.toml> [options]
 ```
 | Option | Effect |
 | --- | --- |
-| `--only NAME` | Run only the `[[run]]` called `NAME`, even if it has `enabled = false`. |
+| `--only NAME` | Run only the `[[run]]` called `NAME`, even if it has `enabled = false`. For a run with `repeats`, `NAME` selects all its copies and `NAME_repK` one copy. |
 | `--data-dir DIR` | Put the parameter folders under `DIR` instead of the file's `data_dir` (e.g. a scratch folder for tests). |
 | `--seed N` | Use seed `N` (1 to 2147483647) for every run. |
+| `--jobs N` | Run up to `N` runs at once, each in its own process (default 1, one after another). |
 | `--dry-run` | Print the resolved runs, their folders and the probability row each will use, then exit. |
 | `-h`, `--help` | Show the usage text. |
 
 The program exits with status 1 and an `error:` message on bad input (config, probability
 table, existing run folder or options), before any simulation starts.
 
-Any `[defaults]` key can be overridden inside a `[[run]]`. Unknown keys are errors, so a
+**Using several cores.** One run uses one core. `--jobs 4` starts the first 4 runs of the file at once and
+starts the next as soon as one finishes, until all are done; the output is the same as running them one
+after another. Each run's terminal output (seed, progress bar, duration) then goes to `log_<time>.txt` in
+its folder (`log_running_<pid>.txt` while it runs, so `tail -f` it to follow progress), and the terminal
+shows one line per run started, finished or failed. The exit status is 1 if any run failed. On this
+machine (4 performance cores) 4 is a good choice.
+
+**Repeats.** `repeats = N` in a `[[run]]` makes N independent runs of that parameter set, named
+`<name>_rep1` ... `<name>_repN`, each with its own random seed; they share one parameter folder, and
+`cp2-analysis` pools them. Two runs with the same parameters and the same fixed seed (for example
+`repeats` together with a `seed`, or `--seed`) would give identical output, so that is rejected.
+
+Any `[defaults]` key can be overridden inside a `[[run]]` (`repeats` and `enabled` belong to a run only). Unknown keys are errors, so a
 typo cannot silently fall back to a default. Everything is checked before the first run
 starts.
 
@@ -134,6 +149,7 @@ Each finished run adds three files to its parameter folder, named by the UTC tim
 | --- | --- |
 | `M_<time>.dat` | Per-measurement winding numbers, charges and worm counters, comma-separated. |
 | `C_<time>.dat` | Correlator measurements, comma-separated. |
+| `log_<time>.txt` | Only with `--jobs` above 1: the run's terminal output. |
 | `run_<time>.toml` | A record of what ran, not a config you edit: the settings, the seed actually used, the probabilities used (inline) and a `[provenance]` table (start and finish time, wall seconds, git description from when CMake last configured). |
 
 `<time>` looks like `20261028-114625`. If another run with the same parameters finished in the same
@@ -145,25 +161,31 @@ something that looks finished.
 `wormCP2Mu2dAFMplaq data/<folder>/run_<time>.toml`. Without `--data-dir` the replay lands in the same
 folder as a new set of files. A run with no `seed` draws a random one, prints it and records it.
 
-The old flat file names (`M_wormCP2AFMmu2dplaq_BC_..._nSim_1.dat`) are no longer written. Older results
-in `data/` keep those names; `cp2-analysis` reads them when given as files, and so do the C++ tools in
-`src/tools` (which parse the names, so they cannot read the new folders).
+The old flat file names (`M_wormCP2AFMmu2dplaq_BC_..._nSim_1.dat`) are no longer written; the 2020–21
+results with those names are in `data/old_macbook_run/`. Only the C++ tools in `src/tools` read them
+(they parse the names, so they cannot read the new folders); `cp2-analysis` reads the new layout only.
 
 `ctest` runs a fixed-seed case and compares it byte for byte with `tests/regression/golden`,
 checks that a recorded run replays exactly and that repeated runs with the same parameters share a
 folder without overwriting each other, that
 several runs in one file match separate runs, that the master table is found in a parent folder, and
-that bad configs are rejected with a clear message.
+that bad configs are rejected with a clear message. The tests labelled `exact` (about 30 s in all;
+`ctest -j4` runs them in parallel, `ctest -LE exact` skips them) compare tiny lattices with the exact
+results in `tests/exact/` using `cp2-analysis check-exact`, so they need uv (they show as disabled
+without it); see `tests/exact/README.md`.
 
 ### Analysing M_ output
 The `cp2-analysis` command (package in `analysis/`, managed with uv) analyses the
-`M_*.dat` files. Run it from the repo root; inputs default to `data/` (searched for finished runs), and plots go to `<input folder>/plots`:
+`M_<time>.dat` files. Run it from the repo root. Inputs default to `data/`; choose runs by folder or by
+parameter (`--beta 56.3 --mu3 0.01:0.03`). Repeat runs of a parameter set are pooled unless `--per-run`:
 ```zsh
 uv sync --project analysis
 uv run --project analysis cp2-analysis summary          # magnetisation and susceptibility vs exact
+uv run --project analysis cp2-analysis summary --beta 56.3   # a scan, plotted against mu3
 uv run --project analysis cp2-analysis raw              # block-averaged raw columns
 uv run --project analysis cp2-analysis acf              # autocorrelation function, tau_int
 uv run --project analysis cp2-analysis thermalisation   # skip scan and MSER
+uv run --project analysis cp2-analysis check-exact --beta 0.05 --typed   # pass/fail vs exact results
 ```
 See [analysis/README.md](analysis/README.md) for the estimators, options and outputs.
 

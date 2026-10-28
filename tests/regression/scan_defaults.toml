@@ -1,0 +1,15 @@
+# beta and lattice in [defaults], overridden in one run (for the defaults_beta_lattice test; run with --dry-run).
+[defaults]
+bc = "closed"
+measurements = 10
+beta = 2.5
+lattice = [4, 4, 200]
+probabilities = "golden/probabilities.txt"
+
+[[run]]
+name = "from_defaults"
+
+[[run]]
+name = "overridden"
+beta = 5.0
+lattice = [8, 4, 400]

@@ -8,6 +8,7 @@
 // One simulation, fully resolved (defaults merged in, paths made concrete).
 struct RunConfig {
   std::string name;
+  std::string group;     // the name as written; differs from name for the copies made by 'repeats'
   std::string bc;        // "closed" or "y-open"
   int measurements = 0;
   double beta = 0;
@@ -38,7 +39,8 @@ constexpr unsigned kMaxSeed = 2147483647u;  // RANLUX seeds are 1 .. 2^31-1
 
 // Parse a TOML run file. Relative paths are taken relative to the file. When no
 // probabilities are given, the nearest probabilities.txt in the file's folder
-// or a parent folder is used. Throws InputError with a message naming the file
+// or a parent folder is used. A run with repeats = N > 1 becomes N runs named
+// <name>_rep1 ... <name>_repN. Throws InputError with a message naming the file
 // and run on any problem.
 std::vector<RunConfig> loadConfig(const std::string& path);
 

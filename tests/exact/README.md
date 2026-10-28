@@ -34,3 +34,22 @@ The simulator does not thermalise, so discard the first measurements (10,000 is 
 analysing. Each `M_<time>.dat` row is `Wx3, Wx8, Wy3, Wy8, Q3, Q8, l, lp, lm, tail`.
 
 Compare with the exact values using `cp2-analysis summary` (see the main README).
+
+## Automatic checks in ctest
+`exact_runs.toml` holds six fixed-seed runs (10^6 measurements each) that `ctest` compares with this CSV:
+the three cases above, and 2x3 y-open at mu3 = 0.03, 0.1 and 0.2 (exact values typed into the notebook).
+`run_exact.cmake` runs one with the simulator, then `cp2-analysis check-exact <folder> --typed`, which
+computes M and chi exactly as `summary` does and fails if |MC - exact| is more than 4 errors, or if the
+CSV has no exact value. At mu3 = mu8 = 0 both charges are checked; otherwise the charge with the chemical
+potential. The tests need uv and a synced analysis environment (`uv sync --project analysis`); if CMake
+finds no `uv` they show as disabled. They take about 5 s each and are labelled `exact`: `ctest -L exact`
+runs only them, `ctest -LE exact` skips them, `ctest -j4` runs them in parallel.
+
+**What they can catch.** The errors are about 0.25% on chi and 0.0012 on M, so they catch broken updates,
+wrong probability rows or normalisation slips, but not effects smaller than that: the exact chi barely
+changes with mu3 here, and M at mu3 = 0.2 (0.0049) is only about 4 errors from zero.
+
+**What is missing.** The master table only has dt = 0.05 rows with mu8 = 0 and mu3 <= 0.4, so the exact
+results at mu3 = 0.5 to 2, at any mu8 != 0 and at beta != 0.05 cannot be simulated. Adding those rows to
+`configs/probabilities.txt`, a `[[run]]` to `exact_runs.toml` and its name to the list in
+`tests/CMakeLists.txt` would add them.

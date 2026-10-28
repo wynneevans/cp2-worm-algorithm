@@ -16,6 +16,8 @@
 #include <chrono>
 #include <cerrno>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 #include <sstream>
 #include <boost/format.hpp>
 #include <boost/multi_array.hpp>
@@ -2127,6 +2129,7 @@ struct Options {
   std::optional<string> only;
   std::optional<string> dataDir;
   std::optional<unsigned> seed;
+  unsigned jobs = 1;
   bool dryRun = false;
   bool help = false;
 };
@@ -2139,9 +2142,12 @@ void printUsage(ostream& os) {
         "parameters, <data dir>/<bc>_<measurements>_<beta>_<Lx>_<Ly>_<Lt>_mu3_<mu3>_mu8_<mu8>/.\n"
         "\n"
         "Options:\n"
-        "  --only NAME         run only the run called NAME (even if it is disabled)\n"
+        "  --only NAME         run only the run called NAME (even if it is disabled); for a run\n"
+        "                      with repeats, NAME selects all its copies and NAME_repK one copy\n"
         "  --data-dir DIR      put the run folders under DIR instead of the file's data_dir\n"
         "  --seed N            use seed N (1 to 2147483647) for every run\n"
+        "  --jobs N            run up to N runs at once, each in its own process (default 1);\n"
+        "                      each run's output then goes to log_<time>.txt in its folder\n"
         "  --dry-run           print the resolved runs and exit\n"
         "  -h, --help          show this help\n"
         "\n"
@@ -2174,6 +2180,15 @@ Options parseArgs(int argc, char** argv) {
         throw InputError("--seed must be an integer between 1 and 2147483647, got '" + v + "'");
       }
       o.seed = static_cast<unsigned>(n);
+    } else if (a == "--jobs") {
+      const string v = value(i, a);
+      char* end = nullptr;
+      errno = 0;
+      const unsigned long long n = strtoull(v.c_str(), &end, 10);
+      if (v.empty() || *end != '\0' || errno != 0 || n < 1 || n > 1024) {
+        throw InputError("--jobs must be an integer of at least 1, got '" + v + "'");
+      }
+      o.jobs = static_cast<unsigned>(n);
     } else if (a.size() > 1 && a[0] == '-') {
       throw InputError("unknown option '" + a + "'");
     } else if (o.configPath.empty()) {
@@ -2201,27 +2216,31 @@ void describe(const RunConfig& r, const ProbabilityTable::Row& row) {
   cout << "\n  folder: " << r.runDir() << endl;
 }
 
-// Gives the finished run's files their final names, M_<stem>.dat, C_<stem>.dat and
-// run_<stem>.toml, where stem is the UTC finish time, with -2, -3, ... added if another
+// Gives the finished run's files their final names, M_<stem>.dat, C_<stem>.dat,
+// run_<stem>.toml and, for a run started with --jobs, log_<stem>.txt, where stem is the UTC finish time, with -2, -3, ... added if another
 // run already used that second. Uses link(), which never replaces an existing file, so
 // runs finishing at the same moment in different processes cannot overwrite each other.
 string publish(const filesystem::path& dir, const string& tmp) {
   const string base = utcStamp();
   auto name = [&](const string& kind, const string& stem) {
-    return (dir / (kind + "_" + stem + (kind == "run" ? ".toml" : ".dat"))).string();
+    const string ext = kind == "run" ? ".toml" : kind == "log" ? ".txt" : ".dat";
+    return (dir / (kind + "_" + stem + ext)).string();
   };
+  vector<string> kinds = {"C", "run"};
+  if (filesystem::exists(name("log", tmp))) kinds.push_back("log");
   for (int n = 1;; n++) {
     const string stem = n == 1 ? base : base + "-" + to_string(n);
     if (link(name("M", tmp).c_str(), name("M", stem).c_str()) != 0) {
       if (errno == EEXIST) continue;
       throw InputError("cannot create '" + name("M", stem) + "': " + strerror(errno));
     }
-    for (const string kind : {"C", "run"}) {
+    for (const string& kind : kinds) {
       if (link(name(kind, tmp).c_str(), name(kind, stem).c_str()) != 0) {
         throw InputError("cannot create '" + name(kind, stem) + "': " + strerror(errno));
       }
     }
-    for (const string kind : {"M", "C", "run"}) unlink(name(kind, tmp).c_str());
+    unlink(name("M", tmp).c_str());
+    for (const string& kind : kinds) unlink(name(kind, tmp).c_str());
     return stem;
   }
 }
@@ -2263,6 +2282,79 @@ void runOne(RunConfig run, const ProbabilityTable::Row& row) {
        << endl;
 }
 
+using Plan = vector<pair<RunConfig, ProbabilityTable::Row>>;
+
+// Runs each planned run in its own process, at most `jobs` at a time, starting the next as
+// soon as one finishes. Each child is a fresh single-threaded copy, so its output is the
+// same as in a sequential run. A child's stdout and stderr go to log_running_<pid>.txt in
+// its run folder (published as log_<time>.txt). Returns the exit status for main.
+int runParallel(const Plan& plan, unsigned jobs) {
+  map<pid_t, string> running;
+  size_t next = 0;
+  int failed = 0;
+  bool forkFailed = false;
+  while ((next < plan.size() && !forkFailed) || !running.empty()) {
+    if (next < plan.size() && !forkFailed && running.size() < jobs) {
+      const auto& [run, row] = plan[next++];
+      const filesystem::path dir = run.runDir();
+      describe(run, row);
+      cout.flush();
+      fflush(nullptr);
+      const pid_t pid = fork();
+      if (pid < 0) {
+        cerr << "error: cannot start run '" << run.name << "': " << strerror(errno)
+             << "; waiting for the running ones" << endl;
+        forkFailed = true;
+        failed++;
+        continue;
+      }
+      if (pid == 0) {
+        int code = 0;
+        try {
+          filesystem::create_directories(dir);
+          const string log = (dir / ("log_" + runningTag() + ".txt")).string();
+          const int fd = open(log.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+          if (fd < 0) throw InputError("cannot create '" + log + "': " + strerror(errno));
+          dup2(fd, STDOUT_FILENO);
+          dup2(fd, STDERR_FILENO);
+          close(fd);
+          runOne(run, row);
+        } catch (const std::exception& e) {
+          cerr << "error: " << e.what() << endl;
+          code = 1;
+        }
+        cout.flush();
+        fflush(nullptr);
+        _exit(code);
+      }
+      running[pid] = run.name;
+      cout << "started '" << run.name << "' (pid " << pid << "), log: "
+           << (dir / ("log_running_" + to_string(pid) + ".txt")).string() << endl;
+      continue;
+    }
+    int status = 0;
+    const pid_t pid = waitpid(-1, &status, 0);
+    if (pid < 0) {
+      if (errno == EINTR) continue;
+      cerr << "error: waitpid: " << strerror(errno) << endl;
+      return 1;
+    }
+    const auto it = running.find(pid);
+    if (it == running.end()) continue;
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+      cout << "finished '" << it->second << "'" << endl;
+    } else {
+      failed++;
+      cout << "run '" << it->second << "' failed (";
+      if (WIFSIGNALED(status)) cout << "signal " << WTERMSIG(status); else cout << "exit status " << WEXITSTATUS(status);
+      cout << "), see its log" << endl;
+    }
+    running.erase(it);
+  }
+  if (failed) cerr << "error: " << failed << " of " << plan.size() << " runs did not finish" << endl;
+  return failed ? 1 : 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2279,16 +2371,20 @@ int main(int argc, char** argv) {
 
     vector<RunConfig> runs = loadConfig(opt.configPath);
     if (opt.only) {
-      auto it = find_if(runs.begin(), runs.end(), [&](const RunConfig& r) { return r.name == *opt.only; });
-      if (it == runs.end()) throw InputError("no run named '" + *opt.only + "' in " + opt.configPath);
-      it->enabled = true;
-      runs = {*it};
+      vector<RunConfig> chosen;
+      for (RunConfig r : runs) {
+        if (r.name != *opt.only && r.group != *opt.only) continue;
+        r.enabled = true;
+        chosen.push_back(r);
+      }
+      if (chosen.empty()) throw InputError("no run named '" + *opt.only + "' in " + opt.configPath);
+      runs = chosen;
     }
 
     // Resolve everything before running anything, so a typo in the last run
     // does not waste hours on the earlier ones.
     map<string, ProbabilityTable> tables;
-    vector<pair<RunConfig, ProbabilityTable::Row>> plan;
+    Plan plan;
     for (RunConfig r : runs) {
       if (!r.enabled) {
         cout << "skipping disabled run '" << r.name << "'" << endl;
@@ -2307,6 +2403,18 @@ int main(int argc, char** argv) {
     }
     if (plan.empty()) throw InputError("no enabled runs in " + opt.configPath);
 
+    // Two runs with the same parameters and the same fixed seed would give identical output.
+    map<pair<string, unsigned>, string> seeded;
+    for (const auto& [r, row] : plan) {
+      if (!r.seed) continue;
+      const auto [it, fresh] = seeded.emplace(make_pair(r.folderName(), *r.seed), r.name);
+      if (!fresh) {
+        throw InputError("runs '" + it->second + "' and '" + r.name + "' have the same parameters and seed " +
+                         to_string(*r.seed) + ", so they would produce identical output");
+      }
+    }
+
+    if (opt.jobs > 1 && !opt.dryRun) return runParallel(plan, opt.jobs);
     for (const auto& [run, row] : plan) {
       describe(run, row);
       if (!opt.dryRun) runOne(run, row);

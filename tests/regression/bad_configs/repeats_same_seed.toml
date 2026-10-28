@@ -1,0 +1,11 @@
+[defaults]
+bc = "closed"
+measurements = 10
+probabilities = "../golden/probabilities.txt"
+
+[[run]]
+name = "r"
+beta = 2.5
+lattice = [4, 4, 200]
+seed = 5
+repeats = 2

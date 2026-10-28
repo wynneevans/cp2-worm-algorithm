@@ -7,7 +7,7 @@ import polars as pl
 import seaborn as sns
 
 from .. import plotting
-from ..runs import SERIES, read_m, run_info
+from ..runs import SERIES, RunInfo, read_m
 from . import _common
 
 
@@ -28,9 +28,8 @@ def block_average(df: pl.DataFrame, block: int) -> pl.DataFrame:
     )
 
 
-def plot_file(path: Path, block: int, outdir: Path) -> tuple[Path, int]:
-    run = run_info(path)
-    df = read_m(path)
+def plot_file(run: RunInfo, block: int, outdir: Path) -> tuple[Path, int]:
+    df = read_m(run.path)
     avg = block_average(df, block)
     x = avg["x"].to_numpy()
     plotting.apply_theme()
@@ -41,16 +40,16 @@ def plot_file(path: Path, block: int, outdir: Path) -> tuple[Path, int]:
         ax.set_ylabel(col, rotation=0, ha="right", va="center")
     axes[-1].set_xlabel("measurement number")
     fig.suptitle(
-        f"{run.name} ({run.lattice} {run.bc}, beta={run.beta}): mean of every {block} measurements "
-        f"(dashed: whole-run mean)"
+        f"{run.label} ({run.size} {run.bc}, beta={run.beta}, mu3={run.mu3}): "
+        f"mean of every {block} measurements (dashed: whole-run mean)"
     )
-    out = outdir / f"raw_{run.name}.png"
+    out = outdir / f"raw_{run.label}.png"
     plotting.save(fig, out)
     return out, avg.height
 
 
 def run(args: argparse.Namespace) -> None:
-    files, out = _common.resolve(args)
-    for f in files:
-        png, n = plot_file(f, args.block, out)
+    runs, out = _common.resolve(args)
+    for r in runs:
+        png, n = plot_file(r, args.block, out)
         print(f"{png} ({n} points per column)")

@@ -25,16 +25,8 @@ def scales(run: RunInfo, m_factor: float = 1.0, chi_factor: float = 1.0) -> tupl
 
 
 def summarise(run: RunInfo, df: pl.DataFrame, nblocks: int) -> dict:
-    """M and chi (with errors) for both charges, one summary row."""
-    out = {
-        "name": run.name,
-        "lattice": run.lattice,
-        "boundary": run.bc,
-        "beta": run.beta,
-        "mu3": run.mu3,
-        "mu8": run.mu8,
-        "n_used": df.height,
-    }
+    """M and chi (with errors) for both charges from the rows of df; run supplies beta and the lattice."""
+    out = {"n_used": df.height}
     for name, (col, mfac, cfac) in CHARGES.items():
         q = df[col].to_numpy()
         m, dm = block_stats(q, nblocks)
@@ -61,3 +53,41 @@ def skip_scan(run: RunInfo, df: pl.DataFrame, nblocks: int) -> pl.DataFrame:
         c, dc = block_stats(q3[s:] ** 2, nblocks)
         rows.append({"skip": s, "M3": m * sm, "dM3": dm * sm, "chi3": c * sc, "dchi3": dc * sc})
     return pl.DataFrame(rows)
+
+
+def chunk_scan(run: RunInfo, df: pl.DataFrame, nchunks: int, nblocks: int) -> pl.DataFrame:
+    """M3 and chi3 on each of `nchunks` consecutive, non-overlapping parts of the run.
+
+    Unlike the skip scan, the chunks share no data, so their errors are independent: if the run is
+    stationary and the errors are right they agree within errors (see `consistency`).
+    """
+    q3 = df["q3"].to_numpy()
+    sm, sc = scales(run)
+    edges = np.linspace(0, len(q3), nchunks + 1).astype(int)
+    rows = []
+    for i, (a, b) in enumerate(zip(edges[:-1], edges[1:], strict=True)):
+        nb = max(2, min(nblocks, (b - a) // 100))
+        m, dm = block_stats(q3[a:b], nb)
+        c, dc = block_stats(q3[a:b] ** 2, nb)
+        rows.append(
+            {
+                "chunk": i,
+                "start": int(a),
+                "end": int(b),
+                "M3": m * sm,
+                "dM3": dm * sm,
+                "chi3": c * sc,
+                "dchi3": dc * sc,
+            }
+        )
+    return pl.DataFrame(rows)
+
+
+def consistency(values: np.ndarray, errors: np.ndarray) -> float | None:
+    """chi^2/dof of the values about their weighted mean: about 1 if they agree within their errors."""
+    ok = errors > 0
+    if ok.sum() < 2:
+        return None
+    v, w = values[ok], 1 / errors[ok] ** 2
+    mean = np.sum(w * v) / np.sum(w)
+    return float(np.sum(w * (v - mean) ** 2) / (ok.sum() - 1))

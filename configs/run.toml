@@ -1,0 +1,19 @@
+# Two independent repeats of the mu3 = 0.03 (mu8 = 0) point at beta*J = 56.3 on a 300 x 12 x 4504 lattice.
+# dt = 4*beta/Lt = 4*56.3/4504 = 0.05. The repeats run as mu3_0.03_rep1 and mu3_0.03_rep2, each with its own
+# random seed, and both add their files to the same parameter folder.
+# The program does no thermalisation: discard the first measurements when analysing.
+# Run both at once:  build/release/src/wormCP2Mu2dAFMplaq configs/run.toml --jobs 2
+
+[defaults]
+bc            = "y-open"
+measurements  = 100000
+beta          = 56.3
+lattice       = [300, 12, 4504]   # Lx, Ly, Lt
+
+[[run]]
+name    = "mu3_0.01"
+mu3     = 0.01
+
+[[run]]
+name    = "mu3_0.02"
+mu3     = 0.02

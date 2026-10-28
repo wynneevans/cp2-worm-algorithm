@@ -1,74 +1,50 @@
 import pytest
 
-from cp2analysis.runs import RunInfo, find_m_files, parse_name, run_info
-
-NAME = "M_wormCP2AFMmu2dplaq_BC_y-open_nMeas_1000000_beta_0.05_XYT_2_3_4_mu3_0.000_mu8_0.000_nSim_1.dat"
-
-
-def test_parse_name():
-    run = parse_name(NAME)
-    assert (run.bc, run.beta, run.lx, run.ly, run.lt, run.mu3, run.mu8) == ("y-open", 0.05, 2, 3, 4, 0.0, 0.0)
-    assert run.name == "2x3_y-open_b0.05"
-    assert run.lattice == "2x3" and run.n_sites == 6
+from conftest import add_run
+from cp2analysis.runs import find_runs, read_run
 
 
-def test_parse_name_rejects_other_files():
-    with pytest.raises(ValueError):
-        parse_name("notes.txt")
-
-
-def test_find_m_files(tmp_path):
-    (tmp_path / NAME).write_text("")
-    (tmp_path / "C_other.dat").write_text("")
-    assert find_m_files([str(tmp_path)]) == []  # no run record next to it
-    assert find_m_files([str(tmp_path / NAME)]) == [tmp_path / NAME]
-
-
-RECORD = """# Record of what was run.
-[[run]]
-name = "2x3_yopen"
-data_dir = ".."
-bc = "y-open"
-measurements = 1000000
-beta = 0.05
-lattice = [2, 3, 4]
-mu3 = 0.0
-mu8 = 0.0
-seed = 20250103
-
-[run.probabilities]
-dt = 0.05
-mu3 = 0.0
-mu8 = 0.0
-p01 = 1.0
-
-[provenance]
-started = '2026-10-28T10:41:15Z'
-git = 'abc1234'
-"""
-
-
-def test_run_folder(tmp_path):
-    folder = tmp_path / "y-open_1000000_0.05_2_3_4_mu3_0.000_mu8_0.000"
-    folder.mkdir()
-    for stamp in ("20261028-114631", "20261028-114631-2"):
-        (folder / f"M_{stamp}.dat").write_text("")
-        (folder / f"run_{stamp}.toml").write_text(RECORD)
-    (folder / "M_running_123.dat").write_text("")  # an unfinished run has no record and is skipped
-    (tmp_path / NAME).write_text("")  # old flat files in a searched folder are skipped too
-
-    found = find_m_files([str(tmp_path)])
-    assert found == [folder / "M_20261028-114631-2.dat", folder / "M_20261028-114631.dat"]
-    run = run_info(folder / "M_20261028-114631.dat")
-    assert run == RunInfo(
-        bc="y-open",
-        beta=0.05,
-        lx=2,
-        ly=3,
-        lt=4,
-        mu3=0.0,
-        mu8=0.0,
-        name="2x3_yopen_20261028-114631",
-        seed=20250103,
+def test_find_runs_reads_records(data):
+    d, _ = data
+    runs = find_runs([str(d)])
+    assert len(runs) == 5
+    mini = [r for r in runs if r.name == "mini"]
+    assert [r.stamp for r in mini] == ["20261028-120000", "20261028-130000"]
+    r = mini[0]
+    assert (r.bc, r.beta, r.lx, r.ly, r.lt, r.mu3, r.mu8, r.measurements) == (
+        "closed",
+        0.05,
+        2,
+        2,
+        4,
+        0.0,
+        0.0,
+        6000,
     )
-    assert run_info(tmp_path / NAME).name == "2x3_y-open_b0.05"  # given explicitly, an old file still works
+    assert r.folder == "closed_6000_0.05_2_2_4_mu3_0.000_mu8_0.000"
+    assert r.label == "mini_20261028-120000" and r.lattice == "2x2" and r.size == "2x2x4"
+
+
+def test_parameter_folder_and_file_inputs_without_duplicates(data):
+    d, _ = data
+    folder = d / "closed_6000_0.05_2_2_4_mu3_0.000_mu8_0.000"
+    assert len(find_runs([str(folder)])) == 2
+    assert len(find_runs([str(folder), str(folder / "M_20261028-120000.dat"), str(d)])) == 5
+
+
+def test_unfinished_and_stray_files_are_skipped(tmp_path):
+    folder = add_run(tmp_path, "20261028-120000", "a")
+    (folder / "M_running_123.dat").write_text("")
+    (tmp_path / "M_wormCP2AFMmu2dplaq_BC_closed_nMeas_10_nSim_1.dat").write_text("")  # old flat file
+    assert [r.label for r in find_runs([str(tmp_path)])] == ["a_20261028-120000"]
+
+
+def test_file_without_record_is_an_error(tmp_path):
+    flat = tmp_path / "M_wormCP2AFMmu2dplaq_BC_closed_nMeas_10_nSim_1.dat"
+    flat.write_text("")
+    with pytest.raises(SystemExit, match="not a finished run"):
+        read_run(flat)
+    with pytest.raises(SystemExit, match="not a finished run"):
+        find_runs([str(flat)])
+    with pytest.raises(SystemExit, match="does not exist"):
+        find_runs([str(tmp_path / "nope")])

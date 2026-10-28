@@ -2,13 +2,14 @@
 
 import argparse
 
-from .commands import acf, raw, summary, thermalisation
+from .commands import acf, check_exact, raw, summary, thermalisation
 
 COMMANDS = {
     "summary": (summary, "magnetisation and susceptibility vs the exact results"),
     "raw": (raw, "block-averaged raw columns (thermalisation / autocorrelation by eye)"),
     "acf": (acf, "autocorrelation function and integrated autocorrelation time"),
     "thermalisation": (thermalisation, "skip scan and MSER: how many measurements to discard"),
+    "check-exact": (check_exact, "pass/fail: M and chi within --max-pull errors of the exact results"),
 }
 
 
