@@ -1,6 +1,7 @@
 set(GOLDEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/regression/golden)
 
-# A run with the golden seed must reproduce golden/M_<name>.dat and C_<name>.dat exactly;
+# A run with the golden seed must reproduce golden/M_<name>.dat and C_<name>.dat exactly (or match
+# golden/M_<name>.sha256 and C_<name>.sha256 for the big cases);
 # a different seed must not (guards against a vacuous comparison).
 function(add_golden_test name folder)
   foreach(seed 42 43)
@@ -27,6 +28,8 @@ add_golden_test(yopen_even y-open_1000_2.50_4_2_200_mu3_0.000_mu8_0.000)
 add_golden_test(yopen_odd  y-open_1000_2.50_4_3_200_mu3_0.000_mu8_0.000)
 add_golden_test(yopen_mu3  y-open_1000_2.50_4_4_200_mu3_0.200_mu8_0.000)
 add_golden_test(yopen_mu8  y-open_1000_2.50_4_4_200_mu3_0.000_mu8_0.200)
+add_golden_test(cover_mu3  y-open_10000_5.00_16_16_400_mu3_0.200_mu8_0.000)
+add_golden_test(cover_mu8  y-open_10000_5.00_16_16_400_mu3_0.000_mu8_0.200)
 
 set(REGRESSION_DIR ${CMAKE_CURRENT_SOURCE_DIR}/regression)
 

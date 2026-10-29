@@ -1,0 +1,39 @@
+# Fixed-seed runs for timing the simulator (scripts/bench.py), not part of ctest.
+# The short runs take about 10 s each and cover every code path (closed, y-open even and odd,
+# non-zero mu3 and mu8); "long" takes about 60 s on a production-like lattice, so a 1% change in
+# speed is 0.6 s (times measured on 2026-10-29). "long" writes a C_ file of about 540 MB;
+# scripts/bench.py runs into a temporary folder and deletes each run's output once its time is read.
+# Saved timings, with these parameters in full, are in results/.
+[defaults]
+bc            = "y-open"
+measurements  = 40000
+beta          = 5.0
+lattice       = [16, 16, 400]   # dt = 4*5/400 = 0.05
+probabilities = "../../configs/probabilities.txt"
+seed          = 1
+
+[[run]]
+name = "closed"
+bc   = "closed"
+
+[[run]]
+name = "yopen_even"
+
+[[run]]
+name    = "yopen_odd"
+lattice = [16, 15, 400]
+
+[[run]]
+name = "mu3"
+mu3  = 0.1
+
+[[run]]
+name = "mu8"
+mu8  = 0.1
+
+[[run]]
+name         = "long"
+measurements = 8000
+beta         = 56.3
+lattice      = [100, 12, 4504]   # dt = 0.05
+mu3          = 0.02

@@ -1,4 +1,4 @@
-add_executable(wormCP2Mu2dAFMplaq worm/main.cpp worm/config.cpp worm/probabilities.cpp)
+add_executable(wormCP2Mu2dAFMplaq worm/main.cpp worm/runner.cpp worm/lattice.cpp worm/config.cpp worm/probabilities.cpp)
 target_link_libraries(wormCP2Mu2dAFMplaq PRIVATE ranlxd tomlplusplus::tomlplusplus)
 # Recorded in resolved.toml. Taken when CMake configures, so re-run cmake to refresh it.
 set(CP2WORM_GIT_DESCRIBE "unknown")

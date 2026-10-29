@@ -26,8 +26,9 @@ include/cp2worm/   shared headers (jackknife.h)
 third_party/       ranlxd (Luescher's RANLUX generator, GPL) and toml++ (TOML parser, MIT)
 tests/             CTest regression tests and golden output
 tests/exact/       exact results (CSV) for Monte Carlo comparison; the runs are in configs/exact.toml
+tests/bench/       fixed-seed runs for timing the simulator (scripts/bench.py); results/ holds saved timings
 configs/           run configs you edit (*.toml) and probabilities.txt, the one master probability table
-scripts/           convert_probs.py, converts old probability files
+scripts/           convert_probs.py, converts old probability files; bench.py, times the simulator
 analysis/  Python (uv, polars, seaborn) analysis of the output files
 reference/         archive: original /dev/urandom-seeded simulator (not built) and the old analysis/ notebook
 data/              simulation output, one folder per parameter set (gitignored)
@@ -170,7 +171,8 @@ results with those names are in `data/old_macbook_run/`. Only the C++ tools in `
 (they parse the names, so they cannot read the new folders); `cp2-analysis` reads the new layout only.
 
 `ctest` runs five fixed-seed cases (closed, y-open with even and odd `Ly`, y-open at mu3 = 0.2 and at mu8 = 0.2) and
-compares them byte for byte with `tests/regression/golden`,
+compares them byte for byte with `tests/regression/golden`, plus two longer y-open cases on 16x16x400
+(mu3 = 0.2, mu8 = 0.2) that reach rare worm states, checked by SHA-256 checksum,
 checks that a recorded run replays exactly and that repeated runs with the same parameters share a
 folder without overwriting each other, that
 several runs in one file match separate runs, that the master table is found in a parent folder, and
@@ -178,6 +180,20 @@ that bad configs are rejected with a clear message. The tests labelled `exact` (
 `ctest -j4` runs them in parallel, `ctest -LE exact` skips them) compare tiny lattices with the exact
 results in `tests/exact/` using `cp2-analysis check-exact`, so they need uv (they show as disabled
 without it); see `tests/exact/README.md`.
+
+Changes to the simulator must not slow it down. `scripts/bench.py` times the runs in
+`tests/bench/bench.toml` (five of about 10 s covering closed, y-open even and odd, mu3 and mu8, and
+one of about 60 s on a 100x12x4504 lattice); run it on an idle machine before and after a change:
+```zsh
+scripts/bench.py --save before-change    # about 6 minutes; --only long for just the 60 s run
+scripts/bench.py --compare tests/bench/results/<time>_before-change.json --save after-change
+scripts/bench.py --list                  # every saved result, with its median per run
+```
+`--save LABEL` writes `tests/bench/results/<UTC time>_<LABEL>.json`: the times, each run's full
+parameters (including the 48 weights), the git version, CPU, OS, compiler and flags. Commit them, so
+there is a history of the speed. `--compare` prints the change per run and warns when the parameters,
+CPU or build differ from the baseline's. A change matters only if it is larger than the spread
+between repeats (well under 1% here).
 
 ### Analysing M_ output
 The `cp2-analysis` command (package in `analysis/`, managed with uv) analyses the

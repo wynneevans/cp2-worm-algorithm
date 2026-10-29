@@ -1,4 +1,4 @@
-# Fixed-seed cases behind golden/M_<name>.dat and golden/C_<name>.dat. The test overrides the data
+# Fixed-seed cases behind golden/M_<name>.dat and golden/C_<name>.dat (or their .sha256). The test overrides the data
 # directory and (for the negative test) the seed on the command line.
 [defaults]
 bc            = "closed"
@@ -42,3 +42,25 @@ beta    = 2.50
 lattice = [4, 4, 200]
 mu8     = 0.2
 seed    = 42
+
+# Longer runs on a bigger lattice. They reach rare worm states the cases above never meet (some start
+# and bounce plaquettes in positionTool and bounceTool), measured with a coverage build on
+# 2026-10-29. Their output is about 9 MB each, so only SHA-256 checksums are stored
+# (golden/{M,C}_<name>.sha256).
+[[run]]
+name         = "cover_mu3"
+bc           = "y-open"
+measurements = 10000
+beta         = 5.0
+lattice      = [16, 16, 400]
+mu3          = 0.2
+seed         = 42
+
+[[run]]
+name         = "cover_mu8"
+bc           = "y-open"
+measurements = 10000
+beta         = 5.0
+lattice      = [16, 16, 400]
+mu8          = 0.2
+seed         = 42
