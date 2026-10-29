@@ -2,6 +2,16 @@
 
 I wrote this code as a postdoc to perform the research carried out in this paper: https://arxiv.org/abs/1803.04767.
 
+The original program used to produce the results is in reference/wormCP2Mu2dAFMplaq.original.cpp.
+
+More recently I have used Claude Code to update the repo in various ways:
+
+- Use more recent C++20 compiler.
+- Reorganise folder structure.
+- Convert exact comparison with tiny lattices solved in Mathematica into regression tests.
+- Add further regression tests that do byte-by-byte comparison with historical result files for same random number seed.
+- Refactor main program into smaller pieces.
+
 ## Overview of the Worm Algorithm
 We simulate a spin system which has two spatial dimensions and a time dimension. 
 
