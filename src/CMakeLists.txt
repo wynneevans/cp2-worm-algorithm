@@ -1,5 +1,5 @@
 add_executable(wormCP2Mu2dAFMplaq worm/main.cpp worm/config.cpp worm/probabilities.cpp)
-target_link_libraries(wormCP2Mu2dAFMplaq PRIVATE Boost::headers ranlxd tomlplusplus::tomlplusplus)
+target_link_libraries(wormCP2Mu2dAFMplaq PRIVATE ranlxd tomlplusplus::tomlplusplus)
 # Recorded in resolved.toml. Taken when CMake configures, so re-run cmake to refresh it.
 set(CP2WORM_GIT_DESCRIBE "unknown")
 find_package(Git QUIET)
@@ -14,15 +14,9 @@ if(GIT_FOUND)
 endif()
 target_compile_definitions(wormCP2Mu2dAFMplaq PRIVATE CP2WORM_GIT_DESCRIBE="${CP2WORM_GIT_DESCRIBE}")
 
-# Boost 1.74's multi_array needs std::unary_function, which libc++ drops in
-# C++17. Not needed with Boost >= 1.81; remove once Boost is upgraded.
-target_compile_definitions(wormCP2Mu2dAFMplaq PRIVATE
-  _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
-
 foreach(tool analyseWorm getWormXi getXIutvNFiles)
   add_executable(${tool} tools/${tool}.cpp)
   target_include_directories(${tool} PRIVATE ${PROJECT_SOURCE_DIR}/include)
-  target_link_libraries(${tool} PRIVATE Boost::headers)
 endforeach()
 
 if(CP2WORM_WARNINGS)

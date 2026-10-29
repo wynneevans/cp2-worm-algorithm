@@ -9,11 +9,10 @@
 #include <cstdio>
 #include <ctime>
 #include <sstream>
-#include <boost/format.hpp>
+#include <format>
 #include <cp2worm/jackknife.h>   
 
 using namespace std;
-using namespace boost;
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
   std::stringstream ss(s);
@@ -424,24 +423,24 @@ int main(int argc, char** argv) {
   double xiTvnerr_ = tJackvn.jackSE();
 
   stringstream wWrite;
-  wWrite << boost::format("%s/xi_All_%ss_%d.dat") % dir % file % nSims;
+  wWrite << std::format("{}/xi_All_{}s_{}.dat", dir, file, nSims);
 
   cout << wWrite.str() << endl;
 
   ofstream outData(wWrite.str());
-  outData << boost::format("%f   %f   %f\n upun:     %.4f   %.4f   %.4f   %.4f\n tptn:     %.4f   %.4f   %.4f   %.4f\n vpvn:     %.4f   %.4f   %.4f   %.4f\n up:     %.4f   %.4f   %.4f   %.4f\n tp:     %.4f   %.4f   %.4f   %.4f\n vp:     %.4f   %.4f   %.4f   %.4f\n un:     %.4f   %.4f   %.4f   %.4f\n tn:     %.4f   %.4f   %.4f   %.4f\n vn:     %.4f   %.4f   %.4f   %.4f\n") % beta % nX % nT % xiXupun_ % xiXupunerr_ % xiTupun_ % xiTupunerr_ % xiXtptn_ % xiXtptnerr_ % xiTtptn_ % xiTtptnerr_ % xiXvpvn_ % xiXvpvnerr_ % xiTvpvn_ % xiTvpvnerr_ % xiXup_ % xiXuperr_ % xiTup_ % xiTuperr_ % xiXtp_ % xiXtperr_ % xiTtp_ % xiTtperr_ % xiXvp_ % xiXvperr_ % xiTvp_ % xiTvperr_ % xiXun_ % xiXunerr_ % xiTun_ % xiTunerr_ % xiXtn_ % xiXtnerr_ % xiTtn_ % xiTtnerr_ % xiXvn_ % xiXvnerr_ % xiTvn_ % xiTvnerr_;
+  outData << std::format("{:.6f}   {}   {}\n upun:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n tptn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n vpvn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n up:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n tp:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n vp:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n un:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n tn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n vn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n", beta, nX, nT, xiXupun_, xiXupunerr_, xiTupun_, xiTupunerr_, xiXtptn_, xiXtptnerr_, xiTtptn_, xiTtptnerr_, xiXvpvn_, xiXvpvnerr_, xiTvpvn_, xiTvpvnerr_, xiXup_, xiXuperr_, xiTup_, xiTuperr_, xiXtp_, xiXtperr_, xiTtp_, xiTtperr_, xiXvp_, xiXvperr_, xiTvp_, xiTvperr_, xiXun_, xiXunerr_, xiTun_, xiTunerr_, xiXtn_, xiXtnerr_, xiTtn_, xiTtnerr_, xiXvn_, xiXvnerr_, xiTvn_, xiTvnerr_);
 
 
- cout << boost::format("%f   %f   %f\n upun:     %.4f   %.4f   %.4f   %.4f\n tptn:     %.4f   %.4f   %.4f   %.4f\n vpvn:     %.4f   %.4f   %.4f   %.4f\n up:     %.4f   %.4f   %.4f   %.4f\n tp:     %.4f   %.4f   %.4f   %.4f\n vp:     %.4f   %.4f   %.4f   %.4f\n un:     %.4f   %.4f   %.4f   %.4f\n tn:     %.4f   %.4f   %.4f   %.4f\n vn:     %.4f   %.4f   %.4f   %.4f\n") % beta % nX % nT % xiXupun_ % xiXupunerr_ % xiTupun_ % xiTupunerr_ % xiXtptn_ % xiXtptnerr_ % xiTtptn_ % xiTtptnerr_ % xiXvpvn_ % xiXvpvnerr_ % xiTvpvn_ % xiTvpvnerr_ % xiXup_ % xiXuperr_ % xiTup_ % xiTuperr_ % xiXtp_ % xiXtperr_ % xiTtp_ % xiTtperr_ % xiXvp_ % xiXvperr_ % xiTvp_ % xiTvperr_ % xiXun_ % xiXunerr_ % xiTun_ % xiTunerr_ % xiXtn_ % xiXtnerr_ % xiTtn_ % xiTtnerr_ % xiXvn_ % xiXvnerr_ % xiTvn_ % xiTvnerr_;
+ cout << std::format("{:.6f}   {}   {}\n upun:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n tptn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n vpvn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n up:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n tp:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n vp:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n un:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n tn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n vn:     {:.4f}   {:.4f}   {:.4f}   {:.4f}\n", beta, nX, nT, xiXupun_, xiXupunerr_, xiTupun_, xiTupunerr_, xiXtptn_, xiXtptnerr_, xiTtptn_, xiTtptnerr_, xiXvpvn_, xiXvpvnerr_, xiTvpvn_, xiTvpvnerr_, xiXup_, xiXuperr_, xiTup_, xiTuperr_, xiXtp_, xiXtperr_, xiTtp_, xiTtperr_, xiXvp_, xiXvperr_, xiTvp_, xiTvperr_, xiXun_, xiXunerr_, xiTun_, xiTunerr_, xiXtn_, xiXtnerr_, xiTtn_, xiTtnerr_, xiXvn_, xiXvnerr_, xiTvn_, xiTvnerr_);
 
  outData << "cX" << endl;
  for(int x=0; x<nX; x++) {
-   outData << boost::format("%.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f\n") % cXupun_[x] % cXupunerr_[x] % cXtptn_[x] % cXtptnerr_[x]  % cXvpvn_[x] % cXvpvnerr_[x] % cXup_[x] % cXuperr_[x] % cXtp_[x] % cXtperr_[x]  % cXvp_[x] % cXvperr_[x] % cXun_[x] % cXunerr_[x] % cXtn_[x] % cXtnerr_[x]  % cXvn_[x] % cXvnerr_[x];
+   outData << std::format("{:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}\n", cXupun_[x], cXupunerr_[x], cXtptn_[x], cXtptnerr_[x], cXvpvn_[x], cXvpvnerr_[x], cXup_[x], cXuperr_[x], cXtp_[x], cXtperr_[x], cXvp_[x], cXvperr_[x], cXun_[x], cXunerr_[x], cXtn_[x], cXtnerr_[x], cXvn_[x], cXvnerr_[x]);
  }
  
  outData << "cT" << endl;
  for(int t=0; t<nT; t++) {
-   outData << boost::format("%.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f   %.4f\n") % cTupun_[t] % cTupunerr_[t] % cTtptn_[t] % cTtptnerr_[t] % cTvpvn_[t] % cTvpvnerr_[t] % cTup_[t] % cTuperr_[t] % cTtp_[t] % cTtperr_[t] % cTvp_[t] % cTvperr_[t]  % cTun_[t] % cTunerr_[t] % cTtn_[t] % cTtnerr_[t] % cTvn_[t] % cTvnerr_[t];
+   outData << std::format("{:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}   {:.4f}\n", cTupun_[t], cTupunerr_[t], cTtptn_[t], cTtptnerr_[t], cTvpvn_[t], cTvpvnerr_[t], cTup_[t], cTuperr_[t], cTtp_[t], cTtperr_[t], cTvp_[t], cTvperr_[t], cTun_[t], cTunerr_[t], cTtn_[t], cTtnerr_[t], cTvn_[t], cTvnerr_[t]);
  }
 
  

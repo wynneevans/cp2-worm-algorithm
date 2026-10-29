@@ -36,7 +36,7 @@ Legacy C++ analysis tools live in `src/tools/`.
 Before saying a task is done, build and run the tests for whichever side you changed (C++: build + ctest; Python: pytest + ruff).
 
 ## C++ conventions
-- Standard: C++20. Files with `using namespace std;` and `using namespace boost;` must write `boost::format` (plain `format` is ambiguous with `std::format`).
+- Standard: C++20. No external C++ dependencies beyond `third_party/`; output lines are written with `std::format` (the `M_`/`C_` format strings must keep the files byte-identical; the golden tests check this).
 - Bad user input (config, probability table, options) throws `InputError`, which `main` reports as `error: ...` with exit status 1. Validate everything before the first run starts.
 - New config keys need validation and a `bad_config_*` test in `tests/CMakeLists.txt`.
 - The golden tests run each case in `tests/regression/golden/golden.toml` (closed 4x4; y-open with even and odd Ly; y-open at mu3 = 0.2 and at mu8 = 0.2) and compare the M_ and C_ files with `golden/{M,C}_<name>.dat` byte for byte. They are the safety net for refactoring `main.cpp`. Keep them identical unless the physics is meant to change; then regenerate as described in `tests/regression/run_golden.cmake` and say so.

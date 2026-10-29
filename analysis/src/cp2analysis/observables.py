@@ -55,6 +55,12 @@ def skip_scan(run: RunInfo, df: pl.DataFrame, nblocks: int) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+# Shortest jackknife block inside a chunk. Blocks must be much longer than the autocorrelation time
+# or the chunk errors come out too small and chi^2/dof too large; 1000 is about 12 tau_int at
+# beta = 56.3 (tau_int ~ 80 measurements). Short chunks get fewer blocks (at least 2).
+MIN_CHUNK_BLOCK = 1000
+
+
 def chunk_scan(run: RunInfo, df: pl.DataFrame, nchunks: int, nblocks: int) -> pl.DataFrame:
     """M3 and chi3 on each of `nchunks` consecutive, non-overlapping parts of the run.
 
@@ -66,7 +72,7 @@ def chunk_scan(run: RunInfo, df: pl.DataFrame, nchunks: int, nblocks: int) -> pl
     edges = np.linspace(0, len(q3), nchunks + 1).astype(int)
     rows = []
     for i, (a, b) in enumerate(zip(edges[:-1], edges[1:], strict=True)):
-        nb = max(2, min(nblocks, (b - a) // 100))
+        nb = max(2, min(nblocks, (b - a) // MIN_CHUNK_BLOCK))
         m, dm = block_stats(q3[a:b], nb)
         c, dc = block_stats(q3[a:b] ** 2, nb)
         rows.append(

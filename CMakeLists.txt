@@ -12,15 +12,6 @@ endif()
 
 option(CP2WORM_WARNINGS "Enable extra compiler warnings" OFF)
 
-# Boost is header-only here (format, multi_array). Point CMake at a local
-# install with -DBoost_ROOT=... (see CMakeUserPresets.json in the README).
-# An unpacked Boost source tree has no BoostConfig.cmake, so keep CMake's FindBoost module
-# (deprecated from CMake 3.30, policy CMP0167). Goes away once Boost is no longer needed.
-if(POLICY CMP0167)
-  cmake_policy(SET CMP0167 OLD)
-endif()
-find_package(Boost 1.74 REQUIRED)
-
 add_subdirectory(third_party/ranlxd)
 add_subdirectory(third_party/tomlplusplus)
 add_subdirectory(src)

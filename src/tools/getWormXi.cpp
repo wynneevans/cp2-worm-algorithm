@@ -9,11 +9,10 @@
 #include <cstdio>
 #include <ctime>
 #include <sstream>
-#include <boost/format.hpp>
+#include <format>
 #include <cp2worm/jackknife.h>   
 
 using namespace std;
-using namespace boost;
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
   std::stringstream ss(s);
@@ -218,7 +217,7 @@ int main(int argc, char** argv) {
   printJackknifedCorrelator(nC, &corrMeasSlice[0], nT, &cTvm1v0[0], &cTvm1v0_[0], &cTvm1v0err_[0]);
   
   stringstream wWrite;
-  wWrite << boost::format("%s/xiWorm_nCskip_%f_%s") % dir % nCskip % file;
+  wWrite << std::format("{}/xiWorm_nCskip_{}_{}", dir, nCskip, file);
 
   cout << wWrite.str() << endl;
 
@@ -226,12 +225,12 @@ int main(int argc, char** argv) {
 
   outData << "cX" << endl;
   for(int x=0; x<nX; x++) {
-    outData << boost::format("%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d\n") % cXt0tp1_[x] % cXt0tp1err_[x] % cXt0tm1_[x] % cXt0tm1err_[x] % cXtp1t0_[x] % cXtp1t0err_[x] % cXtm1t0_[x] % cXtm1t0err_[x] % cXu0up1_[x] % cXu0up1err_[x] % cXu0um1_[x] % cXu0um1err_[x] % cXup1u0_[x] % cXup1u0err_[x] % cXum1u0_[x] % cXum1u0err_[x] % cXv0vp1_[x] % cXv0vp1err_[x] % cXv0vm1_[x] % cXv0vm1err_[x] % cXvp1v0_[x] % cXvp1v0err_[x] % cXvm1v0_[x] % cXvm1v0err_[x];
+    outData << std::format("{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}\n", cXt0tp1_[x], cXt0tp1err_[x], cXt0tm1_[x], cXt0tm1err_[x], cXtp1t0_[x], cXtp1t0err_[x], cXtm1t0_[x], cXtm1t0err_[x], cXu0up1_[x], cXu0up1err_[x], cXu0um1_[x], cXu0um1err_[x], cXup1u0_[x], cXup1u0err_[x], cXum1u0_[x], cXum1u0err_[x], cXv0vp1_[x], cXv0vp1err_[x], cXv0vm1_[x], cXv0vm1err_[x], cXvp1v0_[x], cXvp1v0err_[x], cXvm1v0_[x], cXvm1v0err_[x]);
   }
  
   outData << "cT" << endl;
   for(int t=0; t<nT; t++) {
-    outData << boost::format("%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d%-20.12d\n") % cTt0tp1_[t] % cTt0tp1err_[t] % cTt0tm1_[t] % cTt0tm1err_[t] % cTtp1t0_[t] % cTtp1t0err_[t] % cTtm1t0_[t] % cTtm1t0err_[t] % cTu0up1_[t] % cTu0up1err_[t] % cTu0um1_[t] % cTu0um1err_[t] % cTup1u0_[t] % cTup1u0err_[t] % cTum1u0_[t] % cTum1u0err_[t] %  cTv0vp1_[t] % cTv0vp1err_[t] % cTv0vm1_[t] % cTv0vm1err_[t] %  cTvp1v0_[t] % cTvp1v0err_[t] % cTvm1v0_[t] % cTvm1v0err_[t];
+    outData << std::format("{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}{:<20.12g}\n", cTt0tp1_[t], cTt0tp1err_[t], cTt0tm1_[t], cTt0tm1err_[t], cTtp1t0_[t], cTtp1t0err_[t], cTtm1t0_[t], cTtm1t0err_[t], cTu0up1_[t], cTu0up1err_[t], cTu0um1_[t], cTu0um1err_[t], cTup1u0_[t], cTup1u0err_[t], cTum1u0_[t], cTum1u0err_[t], cTv0vp1_[t], cTv0vp1err_[t], cTv0vm1_[t], cTv0vm1err_[t], cTvp1v0_[t], cTvp1v0err_[t], cTvm1v0_[t], cTvm1v0err_[t]);
   }
  
   outData.close();

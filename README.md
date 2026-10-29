@@ -35,8 +35,8 @@ data/              simulation output, one folder per parameter set (gitignored)
 
 ## Quick start
 ```zsh
-# 1. Build (set Boost_ROOT to your Boost 1.74+ headers; see "Building" below)
-cmake -S . -B build/release -DBoost_ROOT=/path/to/boost
+# 1. Build (see "Building" below)
+cmake -S . -B build/release
 cmake --build build/release
 
 # 2. Check the build: runs the regression tests (a few seconds)
@@ -51,15 +51,16 @@ build/release/src/wormCP2Mu2dAFMplaq configs/production.toml --only closed_b2.5_
 Run it with no arguments, or with `--help`, to print the usage text.
 
 ## Building
-Requires CMake 3.19+ (3.21+ to use the presets, e.g. `brew install cmake`), a C++20 compiler (Apple clang 17+, GCC 11+ or clang 14+) and Boost 1.74+ (headers only).
+Requires CMake 3.19+ (3.21+ to use the presets, e.g. `brew install cmake`) and a C++20 compiler with `<format>` (Apple clang 15+, GCC 13+ or clang 17+). Nothing else to install:
+ranlxd and toml++ are vendored in `third_party/`.
 
 ```zsh
-cmake -S . -B build/release -DBoost_ROOT=/path/to/boost
+cmake -S . -B build/release
 cmake --build build/release
 (cd build/release && ctest --output-on-failure)
 ```
 
-Machine-specific settings (Boost location, compiler flags) belong in a
+Machine-specific settings (SDK path, compiler flags) belong in a
 `CMakeUserPresets.json`, which is gitignored. Copy the `local-base` pattern from
 `CMakePresets.json`'s `release` preset and then run `cmake --preset=release-local`.
 
@@ -194,8 +195,6 @@ uv run --project analysis cp2-analysis check-exact --beta 0.05 --typed   # pass/
 See [analysis/README.md](analysis/README.md) for the estimators, options and outputs.
 
 ### Notes
-- Boost 1.74 needs `_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` with libc++ under C++17 and later
-  (set in `src/CMakeLists.txt`); it can be dropped after upgrading Boost.
 - If the compiler cannot find `<iostream>` on macOS, a stale
   `/Library/Developer/CommandLineTools/usr/include/c++/v1` is shadowing the SDK headers.
   Reinstall the Command Line Tools, or pass `-nostdinc++ -isystem $(xcrun --show-sdk-path)/usr/include/c++/v1`.

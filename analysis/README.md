@@ -58,7 +58,9 @@ Options: `--skip` (fraction of each run's leading rows dropped, default 0.01; `s
   stationary and the errors are right, the chunks agree: chi²/dof about their mean is near 1 (roughly
   0.3–2 for 8 chunks by chance). Well above that means a drift or, more often, an autocorrelation time
   longer than the run can measure, so the quoted errors are too small; repeats with other seeds tell
-  which. `chunks.csv` holds the numbers and chi²/dof per run.
+  which. Each chunk's error uses jackknife blocks of at least 1000 measurements (`MIN_CHUNK_BLOCK` in
+  `observables.py`), so ordinary short-range autocorrelation does not trigger it. `chunks.csv` holds the
+  numbers and chi²/dof per run.
 
 ## Estimators
 With `q3`, `q8` the temporal winding charges (doubled units: q3 = 2 Q3, q8 = (2/sqrt 3) Q8), `Lx` the

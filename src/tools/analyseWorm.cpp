@@ -9,11 +9,10 @@
 #include <cstdio>
 #include <ctime>
 #include <sstream>
-#include <boost/format.hpp>
+#include <format>
 #include <cp2worm/jackknife.h>   
 
 using namespace std;
-using namespace boost;
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
   std::stringstream ss(s);
@@ -45,7 +44,7 @@ void printHistPoints(string name, int L, int* hist, ofstream* out) {
       val = *(hist + i + (j*L));
       
       if(val>0) {
-	*out << boost::format("%-20.15d%-20.15d%-20.15d\n") % val % i % j;
+	*out << std::format("{:<20}{:<20}{:<20}\n", val, i, j);
       }
     }
   }
@@ -62,7 +61,7 @@ void printHistSum(string name, int L, int* hist1, int* hist2, ofstream* out) {
       val = *(hist1 + i + (j*L)) + *(hist2 + i + (j*L));
       
       if(val>0) {
-	*out << boost::format("%-20.15d%-20.15d%-20.15d\n") % val % i % j;
+	*out << std::format("{:<20}{:<20}{:<20}\n", val, i, j);
       }
     }
   }
@@ -285,12 +284,12 @@ int main(int argc, char** argv) {
   }
 
   stringstream wWrite;
-  wWrite << boost::format("%s/analysis_skip_%f_nMeasMax_%f_%s") % dir % skip % nMeasMax % file;
+  wWrite << std::format("{}/analysis_skip_{}_nMeasMax_{}_{}", dir, skip, nMeasMax, file);
 
   cout << wWrite.str() << endl;
 
   ofstream outData(wWrite.str());
-  outData << boost::format("%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.f%-13.f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.6f%-13.1f%-13.1f%-13.1f\n") % w5 % w5err % w6 % w6err % w8 % w8err % w9 % w9err % W1 % W1err % W2 % W2err % w3 % w3err % w4 % w4err % w7 % w7err % w10 % w10err % w11 % w11err % w12 % w12err % w13 % w13err % n % total10 % total11;
+  outData << std::format("{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.0f}{:<13.0f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13.6f}{:<13}{:<13.1f}{:<13.1f}\n", w5, w5err, w6, w6err, w8, w8err, w9, w9err, W1, W1err, W2, W2err, w3, w3err, w4, w4err, w7, w7err, w10, w10err, w11, w11err, w12, w12err, w13, w13err, n, total10, total11);
 
   outData << endl;
 
