@@ -171,6 +171,51 @@ constexpr unsigned char kEdgeWeight[3][2][2][9] = {
 // The moves the worm head can make across a plaquette (see decisionStructure).
 enum class Move { time, space, diag };
 
+// The plaquette type 1-15 of a plaquette value (k on one sublattice, k + 100 on the other), or 0 if
+// the value is neither.
+static inline int plaquetteType(int plaq) {
+  if (plaq >= 1 && plaq <= 15) return plaq;
+  if (plaq >= 101 && plaq <= 115) return plaq - 100;
+  return 0;
+}
+
+// Colour indices in the colour tables below (kNone: no such move).
+constexpr signed char kU = 0, kD = 1, kS = 2, kNone = -1;
+
+// The colour a worm of colour u, d or s takes after a diagonal move forward (t_dir +1) or backward
+// across a plaquette of type 1-15 (entry 0 unused).
+constexpr signed char kDiagColour[2][3][16] = {
+  {  // forward    1      2      3      4      5      6      7      8      9     10     11     12  13-15
+    {kNone,    kD, kNone,    kS,    kD, kNone,    kS,    kD, kNone, kNone, kNone, kNone,    kS, kNone, kNone, kNone},  // u
+    {kNone,    kU,    kS, kNone,    kU,    kS, kNone, kNone, kNone, kNone,    kU,    kS, kNone, kNone, kNone, kNone},  // d
+    {kNone, kNone,    kD,    kU, kNone,    kD,    kU, kNone,    kD,    kU, kNone, kNone, kNone, kNone, kNone, kNone},  // s
+  },
+  {  // backward
+    {kNone,    kD, kNone,    kS,    kD, kNone,    kS, kNone, kNone,    kS,    kD, kNone, kNone, kNone, kNone, kNone},  // u
+    {kNone,    kU,    kS, kNone,    kU,    kS, kNone,    kU,    kS, kNone, kNone, kNone, kNone, kNone, kNone, kNone},  // d
+    {kNone, kNone,    kD,    kU, kNone,    kD,    kU, kNone, kNone, kNone, kNone,    kD,    kU, kNone, kNone, kNone},  // s
+  },
+};
+
+// The colour a worm takes when it bounces back from a plaquette of type 1-15, forward (t_dir +1) or
+// backward, in one of two groups of positions (kBounceGroup; only types 1-6 depend on the group).
+constexpr signed char kBounceColour[2][2][16] = {
+  {  // forward    1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+    {kNone,       kU, kD, kS, kD, kS, kU, kD, kD, kU, kU, kS, kS, kU, kD, kS},
+    {kNone,       kD, kS, kU, kU, kD, kS, kD, kD, kU, kU, kS, kS, kU, kD, kS},
+  },
+  {  // backward
+    {kNone,       kU, kD, kS, kD, kS, kU, kU, kS, kS, kD, kD, kU, kU, kD, kS},
+    {kNone,       kD, kS, kU, kU, kD, kS, kU, kS, kS, kD, kD, kU, kU, kD, kS},
+  },
+};
+
+// The group in kBounceColour of each position 0-7, forward and backward.
+constexpr int kBounceGroup[2][8] = {
+  {0, 1, 0, 0, 0, 1, 1, 1},
+  {1, 1, 0, 1, 0, 0, 0, 1},
+};
+
 // The colour of a worm (setWormColorU/D/S), and the tail it leaves when it starts, which fixes the
 // winding it adds (w3xAdd_, w8xAdd_; see positionTool).
 enum class Colour { u, d, s };
@@ -183,8 +228,9 @@ class Lattice {
   ofstream Mfile_, Cfile_;
   string outDir_, BC_;
 
-  int Nx_, Ny_, Nt_, nTherm_, N_meas_, l_, lp_, lm_, plaq_, pos_, Nplaq_, worm_n_, worm_np1_, worm_start_, xStart_, yStart_, tStart_, startP_, startColor_, originalColor_, wormColor_, q3_, q8_;
+  int Nx_, Ny_, Nt_, nTherm_, N_meas_, l_, lp_, lm_, plaq_, pos_, Nplaq_, worm_n_, worm_np1_, worm_start_, xStart_, yStart_, tStart_, startP_, startColor_, originalColor_, q3_, q8_;
   int t_dir_, sim_, t_bob_, x_bob_, y_bob_, w3xAdd_, w8xAdd_;
+  int colour_ = 0;  // the worm's colour: 0 u, 1 d, 2 s (setWormColour)
  
   vector<int> xytp1_, xytm1_, plaq_record_, plaq_fwd_, plaq_bwd_, next_fwd_, next_bwd_, diag_fwd_, diag_bwd_, chiUp_, chiUm_, chiTp_, chiTm_, chiVp_, chiVm_;
   double beta_, dt_, mu3_, mu8_;
@@ -216,6 +262,8 @@ public:
   void set_AFM_groundstate();
   void wormUpdate();
   void wormUpdateYopen();
+  template <bool yOpen> void wormLoop();
+  template <bool yOpen, int dir, int pos> void wormStep();
   void decisionStructure(const int *, const double *, int, int, int);
   void decisionStructureYopen(const int *, const double *, int, int, int);
   // The current worm's patterns for a plaquette of parity par (0 even, 1 odd) in a slot.
@@ -223,7 +271,7 @@ public:
   const double* bulkProb(int par, int slot) const { return bulkProb_[par][slot]; }
   const int* edgePlaq(int par, int slot) const { return edgePlaq_[par][slot]; }
   const double* edgeProb(int par, int slot) const { return edgeProb_[par][slot]; }
-  void setColourPatterns(int c);
+  void setWormColour(int c);
   void makeMove(Move, int, int, int);
   void startWorm(Colour, const Tail&);  
   void measure();
@@ -406,75 +454,26 @@ void Lattice::check() {
   }
 }
 
+// Moves the worm head diagonally across the plaquette plaq_, changing its colour (kDiagColour).
 void Lattice::diag() {
   dirMove();
+  int dir;
   if (t_dir_==1) {
     worm_n_ = diag_fwd_[worm_n_];
     t_bob_++;
-    if(wormColor_==1) {
-      if(plaq_ == 1 || plaq_ == 4 || plaq_ == 7 || plaq_ == 101 || plaq_ == 104 || plaq_ == 107) {
-	setWormColorD();
-      }
-      else if(plaq_ == 3 || plaq_ == 6 || plaq_ == 12 || plaq_ == 103 || plaq_ == 106 || plaq_ == 112) {
-	setWormColorS();
-      }
-      else { impossible("diag (forward, colour u): no diagonal move across this plaquette"); }
-    }
-    else if(wormColor_==-1) {
-      if(plaq_ == 1 || plaq_ == 4 || plaq_ == 10 || plaq_ == 101 || plaq_ == 104 || plaq_ == 110) {
-	setWormColorU();
-      }
-      else if(plaq_ == 2 || plaq_ == 5 || plaq_ == 11 || plaq_ == 102 || plaq_ == 105 || plaq_ == 111) {
-	setWormColorS();
-      }
-      else { impossible("diag (forward, colour d): no diagonal move across this plaquette"); }
-    }
-    else if(wormColor_==0) {
-      if(plaq_ == 3 || plaq_ == 6 || plaq_ == 9 || plaq_ == 103 || plaq_ == 106 || plaq_ == 109) {
-	setWormColorU();
-      }
-      else if(plaq_ == 2 || plaq_ == 5 || plaq_ == 8 || plaq_ == 102 || plaq_ == 105 || plaq_ == 108) {
-	setWormColorD();
-      }
-      else { impossible("diag (forward, colour s): no diagonal move across this plaquette"); }
-    }
-    else { impossible("diag (forward): worm colour is not u, d or s"); }
+    dir = 0;
   }
   else if (t_dir_==-1) {
     worm_n_ = diag_bwd_[worm_n_];
     t_bob_--;
-    if(wormColor_==1) {
-      if(plaq_ == 1 || plaq_ == 4 || plaq_ == 10 || plaq_ == 101 || plaq_ == 104 || plaq_ == 110) {
-	setWormColorD();
-      }
-      else if(plaq_ == 3 || plaq_ == 6 || plaq_ == 9 || plaq_ == 103 || plaq_ == 106 || plaq_ == 109) {
-	setWormColorS();
-      }
-      else { impossible("diag (backward, colour u): no diagonal move across this plaquette"); }
-    }
-    else if(wormColor_==-1) {
-      if(plaq_ == 1 || plaq_ == 4 || plaq_ == 7 || plaq_ == 101 || plaq_ == 104 || plaq_ == 107) {
-	setWormColorU();
-      }
-      else if(plaq_ == 2 || plaq_ == 5 || plaq_ == 8 || plaq_ == 102 || plaq_ == 105 || plaq_ == 108) {
-	setWormColorS();
-      }
-      else { impossible("diag (backward, colour d): no diagonal move across this plaquette"); }
-    }
-    else if(wormColor_==0) {
-      if(plaq_ == 3 || plaq_ == 6 || plaq_ == 12 || plaq_ == 103 || plaq_ == 106 || plaq_ == 112) {
-	setWormColorU();
-      }
-      else if(plaq_ == 2 || plaq_ == 5 || plaq_ == 11 || plaq_ == 102 || plaq_ == 105 || plaq_ == 111) {
-	setWormColorD();
-      }
-      else { impossible("diag (backward, colour s): no diagonal move across this plaquette"); }
-    }
-    else { impossible("diag (backward): worm colour is not u, d or s"); }
+    dir = 1;
   }
   else {
     impossible("diag: t_dir is not +1 or -1");
   }
+  const int c = kDiagColour[dir][colour_][plaquetteType(plaq_)];
+  if (c < 0) impossible("diag: no diagonal move across this plaquette for this colour");
+  setWormColour(c);
 }
 
 void Lattice::timelike() {
@@ -656,14 +655,6 @@ void Lattice::set_plaq_origins() {
   }
 }
 
-// The plaquette type 1-15 of a plaquette value (k on one sublattice, k + 100 on the other), or 0 if
-// the value is neither.
-static inline int plaquetteType(int plaq) {
-  if (plaq >= 1 && plaq <= 15) return plaq;
-  if (plaq >= 101 && plaq <= 115) return plaq - 100;
-  return 0;
-}
-
 // For each plaquette type (closed boundaries): the two moves the worm can make across it, with the
 // offsets in the pattern arrays (pr: probability, pl: the plaquette value it leaves behind) of the
 // first and second move. Any other outcome is a bounce. Entry 0 is unused.
@@ -731,84 +722,11 @@ void Lattice::decisionStructureYopen(const int *pl, const double *pr, int s, int
   }
 }
 
+// The worm bounces back from the plaquette plaq_ and takes the colour kBounceColour gives it.
+// plaq_ was checked by decisionStructure(Yopen), t_dir_ (+1 or -1) and pos_ (0-7) by wormLoop.
 void Lattice::bounceTool() {
-  if(plaq_==13 || plaq_==113) {
-    setWormColorU();
-  }
-  else if(plaq_==14 || plaq_==114) {
-    setWormColorD();
-  }
-  else if(plaq_==15 || plaq_==115) {
-    setWormColorS();
-  }
-  else if(t_dir_==1) {
-    if(plaq_==9 || plaq_==109 || plaq_==10 || plaq_==110) {
-      setWormColorU();
-    }
-    else if(plaq_==7 || plaq_==107 || plaq_==8 || plaq_==108) {
-      setWormColorD();
-    }
-    else if(plaq_==11 || plaq_==111 || plaq_==12 || plaq_==112) {
-      setWormColorS();
-    }
-    else if(pos_==0 || pos_==2 || pos_==3 || pos_==4 ) { // 0
-      if(plaq_==1 || plaq_==101 || plaq_==6 || plaq_==106) {
-	setWormColorU();
-      }
-      else if(plaq_==2 || plaq_==102 || plaq_==4 || plaq_==104) {
-	setWormColorD();
-      }
-      else if(plaq_==3 || plaq_==103 || plaq_==5 || plaq_==105) {
-	setWormColorS();
-      }
-    }
-    else if(pos_==1 || pos_==5 || pos_==6 || pos_==7 || pos_==9 || pos_==11 || pos_==14 || pos_==15 ) { // 1
-      if(plaq_==3 || plaq_==103 || plaq_==4 || plaq_==104) {
-	setWormColorU();
-      }
-      else if(plaq_==1 || plaq_==101 || plaq_==5 || plaq_==105) {
-	setWormColorD();
-      }
-      else if(plaq_==2 || plaq_==102 || plaq_==6 || plaq_==106) {
-	setWormColorS();
-      }
-    }
-    else { impossible("bounceTool (forward): no colour for this plaquette and position"); }
-  }  
-  else if(t_dir_==-1) {
-     if(plaq_==7 || plaq_==107 || plaq_==12 || plaq_==112) {
-      setWormColorU();
-    }
-    else if(plaq_==10 || plaq_==110 || plaq_==11 || plaq_==111) {
-      setWormColorD();
-    }
-    else if(plaq_==8 || plaq_==108 || plaq_==9 || plaq_==109) {
-      setWormColorS();
-    }            
-    else if(pos_==2 || pos_==4 || pos_==5 || pos_==6 || pos_==8 || pos_==9 || pos_==12 || pos_==14 ) { // 2
-      if(plaq_==1 || plaq_==101 || plaq_==6 || plaq_==106) {
-	setWormColorU();
-      }
-      else if(plaq_==2 || plaq_==102 || plaq_==4 || plaq_==104) {
-	setWormColorD();
-      }
-      else if(plaq_==3 || plaq_==103 || plaq_==5 || plaq_==105) {
-	setWormColorS();
-      }
-    }             
-    else if(pos_==0 || pos_==1 || pos_==3 || pos_==7 || pos_==10 || pos_==11 || pos_==13 || pos_==15 ) { // 3
-      if(plaq_==3 || plaq_==103 || plaq_==4 || plaq_==104) {
-	setWormColorU();
-      }
-      else if(plaq_==1 || plaq_==101 || plaq_==5 || plaq_==105) {
-	setWormColorD();
-      }
-      else if(plaq_==2 || plaq_==102 || plaq_==6 || plaq_==106) {
-	setWormColorS();
-      }
-    }
-    else { impossible("bounceTool (backward): no colour for this plaquette and position"); }
-  }
+  const int dir = t_dir_==1 ? 0 : 1;
+  setWormColour(kBounceColour[dir][kBounceGroup[dir][pos_]][plaquetteType(plaq_)]);
 }
 
 // The tails a worm can start with, and the winding each adds.
@@ -928,28 +846,18 @@ void Lattice::startWorm(Colour colour, const Tail& tail) {
   w8xAdd_ = tail.w8;
 }
 
-// Points the current worm's patterns at those of colour c (0 u, 1 d, 2 s).
-void Lattice::setColourPatterns(int c) {
+// Sets the worm's colour c (0 u, 1 d, 2 s) and points its patterns at those of that colour.
+void Lattice::setWormColour(int c) {
+  colour_ = c;
   bulkPlaq_ = kBulkPlaq[c];
   bulkProb_ = bulkProbAll_[c];
   edgePlaq_ = kEdgePlaq[c];
   edgeProb_ = edgeProbAll_[c];
 }
 
-void Lattice::setWormColorU() {
-  wormColor_ = 1;
-  setColourPatterns(0);
-}
-
-void Lattice::setWormColorD() {
-  wormColor_ = -1;
-  setColourPatterns(1);
-}
-
-void Lattice::setWormColorS() {
-  wormColor_ = 0;
-  setColourPatterns(2);
-}
+void Lattice::setWormColorU() { setWormColour(kU); }
+void Lattice::setWormColorD() { setWormColour(kD); }
+void Lattice::setWormColorS() { setWormColour(kS); }
 
 // Fills the probability patterns from the run's weights (kBulkWeight, kEdgeWeight).
 void Lattice::setPatts() {
@@ -964,92 +872,37 @@ void Lattice::setPatts() {
 }
 
 
-void Lattice::wormUpdate() {
-  while(true) {
-        
-    l_++;
-    if(t_bob_>=0) {
-      lp_++;
-    }
-    if(t_bob_<=0) {
-      lm_++;
-    }
-  
-    buildCorrelator(corr1,corr2);
+// One step of the worm for each direction (0 forward, t_dir_ = +1; 1 backward) and position pos_:
+// the patterns to use (parity of the plaquette, 0 even or 1 odd, and its bulk slot; at a y-open edge
+// the edge slot is slot % 2) and the positions the head lands on after a spacelike, timelike or
+// diagonal move.
+struct Step {
+  int par, slot, s, t, d;
+};
+constexpr Step kSteps[2][8] = {
+  {{0, 0, 1, 2, 3}, {0, 1, 0, 3, 2}, {0, 0, 6, 5, 1}, {1, 0, 7, 4, 0}, {1, 0, 5, 6, 7}, {1, 1, 4, 7, 6}, {0, 1, 2, 1, 5}, {1, 1, 3, 0, 4}},  // forward
+  {{1, 3, 4, 7, 3}, {0, 3, 5, 6, 2}, {0, 2, 3, 0, 1}, {0, 3, 2, 1, 0}, {1, 2, 0, 3, 7}, {0, 2, 1, 2, 6}, {1, 2, 7, 4, 5}, {1, 3, 6, 5, 4}},  // backward
+};
 
-    if (t_dir_==1) {
-      
-      Nplaq_=plaq_fwd_[worm_n_];
-      plaq_=plaq_record_[Nplaq_];
-    
-      if (pos_==0) {      // 0 e
-	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),1,2,3);
-      }
-      else if (pos_==1) { // 1 e
-	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),0,3,2);
-      }
-      else if (pos_==2) { // 0 e
-	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),6,5,1);
-      }
-      else if (pos_==3) { // 0 o
-	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),7,4,0);
-      } 
-      else if (pos_==4) { // 0 o
-	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),5,6,7);
-      }
-      else if (pos_==5) { // 1 o
-	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),4,7,6);
-      }
-      else if (pos_==6) { // 1 e
-	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),2,1,5);
-      }
-      else if (pos_==7) { // 1 o
-	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),3,0,4);
-      } 
-      else { impossible("wormUpdate: pos is not 0-7"); }      
-    }
-    else if (t_dir_==-1) {
-      
-      Nplaq_=plaq_bwd_[worm_n_];
-      plaq_=plaq_record_[Nplaq_];
-      
-      if (pos_==0) {      // 3 o
-	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),4,7,3);
-      }
-      else if (pos_==1) { // 3 e
-	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),5,6,2);
-      }
-      else if (pos_==2) { // 2 e
-	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),3,0,1);
-      }
-      else if (pos_==3) { // 3 e
-	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),2,1,0);
-      }
-      else if (pos_==4) { // 2 o
-	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),0,3,7);
-      }
-      else if (pos_==5) { // 2 e
-	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),1,2,6);
-      }
-      else if (pos_==6) { // 2 o
-	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),7,4,5);
-      }
-      else if (pos_==7) { // 3 o
-	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),6,5,4);
-      }
-      else { impossible("wormUpdate: pos is not 0-7"); }      
-    }
-    else { impossible("wormUpdate: t_dir is not +1 or -1"); }
-    
-    if(worm_n_ == worm_start_) {
-      break;
-    }
-     
+// One step of the worm in direction dir from position pos (kSteps). With yOpen, a step at a y-open
+// edge (fwdEdge, bwdEdge) uses the edge patterns.
+template <bool yOpen, int dir, int pos>
+void Lattice::wormStep() {
+  constexpr Step step = kSteps[dir][pos];
+  bool edge = false;
+  if constexpr (yOpen) edge = dir == 0 ? (this->*fwdEdge)() : (this->*bwdEdge)();
+  if (edge) {
+    decisionStructureYopen(edgePlaq(step.par,step.slot%2),edgeProb(step.par,step.slot%2),step.s,step.t,step.d);
   }
-  
+  else {
+    decisionStructure(bulkPlaq(step.par,step.slot),bulkProb(step.par,step.slot),step.s,step.t,step.d);
+  }
 }
 
-void Lattice::wormUpdateYopen() {
+// Moves the worm until its head is back at the tail. With yOpen, steps at a y-open edge (fwdEdge,
+// bwdEdge) use the edge patterns.
+template <bool yOpen>
+void Lattice::wormLoop() {
   while(true) {
 
     l_++;
@@ -1058,131 +911,54 @@ void Lattice::wormUpdateYopen() {
     }
     if(t_bob_<=0) {
       lm_++;
-    }    
-    
+    }
+
     buildCorrelator(corr1,corr2);
-    
-    if (t_dir_==1) {
-      
-      Nplaq_=plaq_fwd_[worm_n_];
-      plaq_=plaq_record_[Nplaq_];
-      
-      if( (this->*fwdEdge)() ) { 
-	if (pos_==0) {      // 0 e
-	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),1,2,3);
-	}
-	else if (pos_==1) { // 1 e
-	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),0,3,2);
-	}
-	else if (pos_==2) { // 0 e
-	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),6,5,1);
-	}
-	else if (pos_==3) { // 0 o
-	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),7,4,0);
-	} 
-	else if (pos_==4) { // 0 o
-	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),5,6,7);
-	}
-	else if (pos_==5) { // 1 o
-	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),4,7,6);
-	}
-	else if (pos_==6) { // 1 e
-	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),2,1,5);
-	}
-	else if (pos_==7) { // 1 o
-	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),3,0,4);
-	} 
-      }
-      else if (pos_==0) {      // 0 e
-	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),1,2,3);
-      }
-      else if (pos_==1) { // 1 e
-	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),0,3,2);
-      }
-      else if (pos_==2) { // 0 e
-	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),6,5,1);
-      }
-      else if (pos_==3) { // 0 o
-	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),7,4,0);
-      } 
-      else if (pos_==4) { // 0 o
-	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),5,6,7);
-      }
-      else if (pos_==5) { // 1 o
-	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),4,7,6);
-      }
-      else if (pos_==6) { // 1 e
-	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),2,1,5);
-      }
-      else if (pos_==7) { // 1 o
-	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),3,0,4);
-      }  
+
+    if (t_dir_ != 1 && t_dir_ != -1) {
+      impossible(yOpen ? "wormUpdateYopen: t_dir is not +1 or -1" : "wormUpdate: t_dir is not +1 or -1");
     }
-    else if (t_dir_==-1) {
-      
-      Nplaq_=plaq_bwd_[worm_n_];
-      plaq_=plaq_record_[Nplaq_];
-    
-      if( (this->*bwdEdge)() ) { 
-	if (pos_==0) {      // 3 o
-	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),4,7,3);
-	}
-	else if (pos_==1) { // 3 e
-	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),5,6,2);
-	}
-	else if (pos_==2) { // 2 e
-	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),3,0,1);
-	}
-	else if (pos_==3) { // 3 e
-	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),2,1,0);
-	}
-	else if (pos_==4) { // 2 o
-	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),0,3,7);
-	}
-	else if (pos_==5) { // 2 e
-	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),1,2,6);
-	}
-	else if (pos_==6) { // 2 o
-	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),7,4,5);
-	}
-	else if (pos_==7) { // 3 o
-	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),6,5,4);
-	}
-      }
-      else if (pos_==0) {      // 3 o
-	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),4,7,3);
-      }
-      else if (pos_==1) { // 3 e
-	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),5,6,2);
-      }
-      else if (pos_==2) { // 2 e
-	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),3,0,1);
-      }
-      else if (pos_==3) { // 3 e
-	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),2,1,0);
-      }
-      else if (pos_==4) { // 2 o
-	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),0,3,7);
-      }
-      else if (pos_==5) { // 2 e
-	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),1,2,6);
-      }
-      else if (pos_==6) { // 2 o
-	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),7,4,5);
-      }
-      else if (pos_==7) { // 3 o
-	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),6,5,4);
+    const bool forward = t_dir_==1;
+    Nplaq_ = forward ? plaq_fwd_[worm_n_] : plaq_bwd_[worm_n_];
+    plaq_=plaq_record_[Nplaq_];
+    // A switch, so that each step's patterns and positions are compile-time constants (a run-time
+    // lookup in kSteps here made the simulator 2-5% slower).
+    if (forward) {
+      switch (pos_) {
+        case 0: wormStep<yOpen, 0, 0>(); break;
+        case 1: wormStep<yOpen, 0, 1>(); break;
+        case 2: wormStep<yOpen, 0, 2>(); break;
+        case 3: wormStep<yOpen, 0, 3>(); break;
+        case 4: wormStep<yOpen, 0, 4>(); break;
+        case 5: wormStep<yOpen, 0, 5>(); break;
+        case 6: wormStep<yOpen, 0, 6>(); break;
+        case 7: wormStep<yOpen, 0, 7>(); break;
+        default: impossible(yOpen ? "wormUpdateYopen: pos is not 0-7" : "wormUpdate: pos is not 0-7");
       }
     }
-    else { impossible("wormUpdateYopen: t_dir is not +1 or -1"); }
-    
+    else {
+      switch (pos_) {
+        case 0: wormStep<yOpen, 1, 0>(); break;
+        case 1: wormStep<yOpen, 1, 1>(); break;
+        case 2: wormStep<yOpen, 1, 2>(); break;
+        case 3: wormStep<yOpen, 1, 3>(); break;
+        case 4: wormStep<yOpen, 1, 4>(); break;
+        case 5: wormStep<yOpen, 1, 5>(); break;
+        case 6: wormStep<yOpen, 1, 6>(); break;
+        case 7: wormStep<yOpen, 1, 7>(); break;
+        default: impossible(yOpen ? "wormUpdateYopen: pos is not 0-7" : "wormUpdate: pos is not 0-7");
+      }
+    }
+
     if(worm_n_ == worm_start_) {
       break;
     }
- 
   }
-  
 }
+
+void Lattice::wormUpdate() { wormLoop<false>(); }
+
+void Lattice::wormUpdateYopen() { wormLoop<true>(); }
 
 
 
