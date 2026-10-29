@@ -7,6 +7,7 @@
 #include <string>
 #include <ranlxd.h>
 #include <format>
+#include <initializer_list>
 #include "lattice.h"
 #include "config.h"
 #include "input_error.h"
@@ -44,30 +45,159 @@ inline double ran() {ranlxd(rvec,1);return rvec[0];} //Generates random number b
 inline int ranspin() {ranlxd(rvec,1);return int(2*rvec[0]);} //Generates random number 0 or 1
 inline int ranint(int max) {ranlxd(rvec,1);return int(max*rvec[0]);} //Generates integer random number from 0 to max-1
 
+// Update patterns. For each worm colour (u, d, s), sublattice parity of the plaquette (even, odd) and
+// slot (the plaquette's place in the time direction: 0-3 in the bulk; 02 and 13 at a y-open edge),
+// entry i of a pattern belongs to one move of decisionStructure (offsets in kPlaquetteMoves) or of
+// decisionStructureYopen (kYopenEdgeOffset).
+//
+// kBulkPlaq / kEdgePlaq: the plaquette value the move leaves behind.
+
+// Bulk (closed boundaries, or away from a y-open edge).
+constexpr int kBulkPlaq[3][2][4][30] = {
+  {  // u
+    {{  0,   0,   0,   6,   9,  13,  10,  13,   0,   1,   0,   0,   1,  13,   0,   9,   0,   0,   0,   0,   0,  10,   6,  13,   0,   0,   1,  10,   6,   9},
+     { 10,  13,   0,   4,   0,   0,   0,   0,   0,   3,   9,  13,   4,  13,   0,   9,   0,   0,   0,   0,   0,  10,   3,  13,   0,   0,   4,  10,   3,   9},
+     {  0,   0,   0,   6,  12,  13,   7,  13,   0,   1,   0,   0,   0,   0,   0,   7,   6,  13,   1,  13,   0,  12,   0,   0,   0,   0,   1,   7,   6,  12},
+     {  7,  13,   0,   4,   0,   0,   0,   0,   0,   3,  12,  13,   0,   0,   0,   7,   3,  13,   4,  13,   0,  12,   0,   0,   0,   0,   4,   7,   3,  12}},  // even
+    {{100, 100, 100, 106, 109, 113, 110, 113, 100, 101, 100, 100, 101, 113, 100, 109, 100, 100, 100, 100, 100, 110, 106, 113, 100, 100, 101, 110, 106, 109},
+     {110, 113, 100, 104, 100, 100, 100, 100, 100, 103, 109, 113, 104, 113, 100, 109, 100, 100, 100, 100, 100, 110, 103, 113, 100, 100, 104, 110, 103, 109},
+     {100, 100, 100, 106, 112, 113, 107, 113, 100, 101, 100, 100, 100, 100, 100, 107, 106, 113, 101, 113, 100, 112, 100, 100, 100, 100, 101, 107, 106, 112},
+     {107, 113, 100, 104, 100, 100, 100, 100, 100, 103, 112, 113, 100, 100, 100, 107, 103, 113, 104, 113, 100, 112, 100, 100, 100, 100, 104, 107, 103, 112}},  // odd
+  },
+  {  // d
+    {{  7,  14,   0,   0,   0,   4,   0,   0,   8,  14,   0,   2,   0,   0,   0,   0,   0,   8,   4,  14,   2,  14,   0,   7,   4,   7,   0,   0,   2,   8},
+     {  0,   0,   8,  14,   0,   5,   7,  14,   0,   0,   0,   1,   0,   0,   0,   0,   0,   8,   1,  14,   5,  14,   0,   7,   1,   7,   0,   0,   5,   8},
+     { 10,  14,   0,   0,   0,   4,   0,   0,  11,  14,   0,   2,   4,  14,   2,  14,   0,  10,   0,   0,   0,   0,   0,  11,   4,  10,   0,   0,   2,  11},
+     {  0,   0,  11,  14,   0,   5,  10,  14,   0,   0,   0,   1,   1,  14,   5,  14,   0,  10,   0,   0,   0,   0,   0,  11,   1,  10,   0,   0,   5,  11}},  // even
+    {{107, 114, 100, 100, 100, 104, 100, 100, 108, 114, 100, 102, 100, 100, 100, 100, 100, 108, 104, 114, 102, 114, 100, 107, 104, 107, 100, 100, 102, 108},
+     {100, 100, 108, 114, 100, 105, 107, 114, 100, 100, 100, 101, 100, 100, 100, 100, 100, 108, 101, 114, 105, 114, 100, 107, 101, 107, 100, 100, 105, 108},
+     {110, 114, 100, 100, 100, 104, 100, 100, 111, 114, 100, 102, 104, 114, 102, 114, 100, 110, 100, 100, 100, 100, 100, 111, 104, 110, 100, 100, 102, 111},
+     {100, 100, 111, 114, 100, 105, 110, 114, 100, 100, 100, 101, 101, 114, 105, 114, 100, 110, 100, 100, 100, 100, 100, 111, 101, 110, 100, 100, 105, 111}},  // odd
+  },
+  {  // s
+    {{  0,   5,  11,  15,   0,   0,   0,   3,   0,   0,  12,  15,   0,  12,   5,  15,   3,  15,   0,  11,   0,   0,   0,   0,   3,  12,   5,  11,   0,   0},
+     {  0,   6,   0,   0,  12,  15,   0,   2,  11,  15,   0,   0,   0,  12,   2,  15,   6,  15,   0,  11,   0,   0,   0,   0,   6,  12,   2,  11,   0,   0},
+     {  0,   5,   8,  15,   0,   0,   0,   3,   0,   0,   9,  15,   0,   8,   0,   0,   0,   0,   0,   9,   5,  15,   3,  15,   3,   9,   5,   8,   0,   0},
+     {  0,   6,   0,   0,   9,  15,   0,   2,   8,  15,   0,   0,   0,   8,   0,   0,   0,   0,   0,   9,   2,  15,   6,  15,   6,   9,   2,   8,   0,   0}},  // even
+    {{100, 105, 111, 115, 100, 100, 100, 103, 100, 100, 112, 115, 100, 112, 105, 115, 103, 115, 100, 111, 100, 100, 100, 100, 103, 112, 105, 111, 100, 100},
+     {100, 106, 100, 100, 112, 115, 100, 102, 111, 115, 100, 100, 100, 112, 102, 115, 106, 115, 100, 111, 100, 100, 100, 100, 106, 112, 102, 111, 100, 100},
+     {100, 105, 108, 115, 100, 100, 100, 103, 100, 100, 109, 115, 100, 108, 100, 100, 100, 100, 100, 109, 105, 115, 103, 115, 103, 109, 105, 108, 100, 100},
+     {100, 106, 100, 100, 109, 115, 100, 102, 108, 115, 100, 100, 100, 108, 100, 100, 100, 100, 100, 109, 102, 115, 106, 115, 106, 109, 102, 108, 100, 100}},  // odd
+  },
+};
+
+// At a y-open edge.
+constexpr int kEdgePlaq[3][2][2][9] = {
+  {  // u
+    {{  0,   6,  13,  13,   1,   0,   0,   1,   6},
+     { 13,   4,   0,   0,   3,  13,   0,   4,   3}},  // even
+    {{  0, 106, 113, 113, 101,   0,   0, 101, 106},
+     {113, 104,   0,   0, 103, 113,   0, 104, 103}},  // odd
+  },
+  {  // d
+    {{ 14,   0,   4,   0,  14,   2,   4,   0,   2},
+     {  0,  14,   5,  14,   0,   1,   1,   0,   5}},  // even
+    {{114,   0, 104,   0, 114, 102, 104,   0, 102},
+     {  0, 114, 105, 114,   0, 101, 101,   0, 105}},  // odd
+  },
+  {  // s
+    {{  5,  15,   0,   3,   0,  15,   3,   5,   0},
+     {  6,   0,  15,   2,  15,   0,   6,   2,   0}},  // even
+    {{105, 115,   0, 103,   0, 115, 103, 105,   0},
+     {106,   0, 115, 102, 115,   0, 106, 102,   0}},  // odd
+  },
+};
+
+// kBulkWeight / kEdgeWeight: the probability of the move, as an index into the run's weights:
+// 0 means probability 0, k = 1-48 means p_k (p01 ... p48 of the table), kOne means probability 1.
+constexpr int kOne = 49;
+
+// Bulk.
+constexpr unsigned char kBulkWeight[3][2][4][30] = {
+  {  // u
+    {{ 0,  0,  0, 39, 29, 30, 11, 12,  0, 38,  0,  0,  2,  1,  0, 49,  0,  0,  0,  0,  0, 49, 32, 31,  0,  0,  4,  3, 34, 33},
+     { 5,  6,  0, 37,  0,  0,  0,  0,  0, 40, 35, 36,  8,  7,  0, 49,  0,  0,  0,  0,  0, 49, 26, 25,  0,  0, 10,  9, 28, 27},
+     { 0,  0,  0, 39, 29, 30, 11, 12,  0, 38,  0,  0,  0,  0,  0, 49, 32, 31,  2,  1,  0, 49,  0,  0,  0,  0,  4,  3, 34, 33},
+     { 5,  6,  0, 37,  0,  0,  0,  0,  0, 40, 35, 36,  0,  0,  0, 49, 26, 25,  8,  7,  0, 49,  0,  0,  0,  0, 10,  9, 28, 27}},  // even
+    {{ 0,  0,  0, 40, 35, 36,  5,  6,  0, 37,  0,  0,  8,  7,  0, 49,  0,  0,  0,  0,  0, 49, 26, 25,  0,  0, 10,  9, 28, 27},
+     {11, 12,  0, 38,  0,  0,  0,  0,  0, 39, 29, 30,  2,  1,  0, 49,  0,  0,  0,  0,  0, 49, 32, 31,  0,  0,  4,  3, 34, 33},
+     { 0,  0,  0, 40, 35, 36,  5,  6,  0, 37,  0,  0,  0,  0,  0, 49, 26, 25,  8,  7,  0, 49,  0,  0,  0,  0, 10,  9, 28, 27},
+     {11, 12,  0, 38,  0,  0,  0,  0,  0, 39, 29, 30,  0,  0,  0, 49, 32, 31,  2,  1,  0, 49,  0,  0,  0,  0,  4,  3, 34, 33}},  // odd
+  },
+  {  // d
+    {{ 5,  6,  0,  0,  0, 41,  0,  0, 23, 24,  0, 40,  0,  0,  0,  0,  0, 49,  8,  7, 14, 13,  0, 49, 10,  9,  0,  0, 16, 15},
+     { 0,  0, 17, 18,  0, 39, 11, 12,  0,  0,  0, 42,  0,  0,  0,  0,  0, 49,  2,  1, 20, 19,  0, 49,  4,  3,  0,  0, 22, 21},
+     { 5,  6,  0,  0,  0, 41,  0,  0, 23, 24,  0, 40,  8,  7, 14, 13,  0, 49,  0,  0,  0,  0,  0, 49, 10,  9,  0,  0, 16, 15},
+     { 0,  0, 17, 18,  0, 39, 11, 12,  0,  0,  0, 42,  2,  1, 20, 19,  0, 49,  0,  0,  0,  0,  0, 49,  4,  3,  0,  0, 22, 21}},  // even
+    {{11, 12,  0,  0,  0, 42,  0,  0, 17, 18,  0, 39,  0,  0,  0,  0,  0, 49,  2,  1, 20, 19,  0, 49,  4,  3,  0,  0, 22, 21},
+     { 0,  0, 23, 24,  0, 40,  5,  6,  0,  0,  0, 41,  0,  0,  0,  0,  0, 49,  8,  7, 14, 13,  0, 49, 10,  9,  0,  0, 16, 15},
+     {11, 12,  0,  0,  0, 42,  0,  0, 17, 18,  0, 39,  2,  1, 20, 19,  0, 49,  0,  0,  0,  0,  0, 49,  4,  3,  0,  0, 22, 21},
+     { 0,  0, 23, 24,  0, 40,  5,  6,  0,  0,  0, 41,  8,  7, 14, 13,  0, 49,  0,  0,  0,  0,  0, 49, 10,  9,  0,  0, 16, 15}},  // odd
+  },
+  {  // s
+    {{ 0, 37, 17, 18,  0,  0,  0, 42,  0,  0, 35, 36,  0, 49, 20, 19, 26, 25,  0, 49,  0,  0,  0,  0, 28, 27, 22, 21,  0,  0},
+     { 0, 41,  0,  0, 29, 30,  0, 38, 23, 24,  0,  0,  0, 49, 14, 13, 32, 31,  0, 49,  0,  0,  0,  0, 34, 33, 16, 15,  0,  0},
+     { 0, 37, 17, 18,  0,  0,  0, 42,  0,  0, 35, 36,  0, 49,  0,  0,  0,  0,  0, 49, 20, 19, 26, 25, 28, 27, 22, 21,  0,  0},
+     { 0, 41,  0,  0, 29, 30,  0, 38, 23, 24,  0,  0,  0, 49,  0,  0,  0,  0,  0, 49, 14, 13, 32, 31, 34, 33, 16, 15,  0,  0}},  // even
+    {{ 0, 38, 23, 24,  0,  0,  0, 41,  0,  0, 29, 30,  0, 49, 14, 13, 32, 31,  0, 49,  0,  0,  0,  0, 34, 33, 16, 15,  0,  0},
+     { 0, 42,  0,  0, 35, 36,  0, 37, 17, 18,  0,  0,  0, 49, 20, 19, 26, 25,  0, 49,  0,  0,  0,  0, 28, 27, 22, 21,  0,  0},
+     { 0, 38, 23, 24,  0,  0,  0, 41,  0,  0, 29, 30,  0, 49,  0,  0,  0,  0,  0, 49, 14, 13, 32, 31, 34, 33, 16, 15,  0,  0},
+     { 0, 42,  0,  0, 35, 36,  0, 37, 17, 18,  0,  0,  0, 49,  0,  0,  0,  0,  0, 49, 20, 19, 26, 25, 28, 27, 22, 21,  0,  0}},  // odd
+  },
+};
+
+// At a y-open edge.
+constexpr unsigned char kEdgeWeight[3][2][2][9] = {
+  {  // u
+    {{ 0, 44, 47, 44, 47,  0,  0, 44, 47},
+     {43, 48,  0,  0, 43, 48,  0, 43, 48}},  // even
+    {{ 0, 43, 48, 43, 48,  0,  0, 43, 48},
+     {44, 47,  0,  0, 44, 47,  0, 44, 47}},  // odd
+  },
+  {  // d
+    {{43,  0, 46,  0, 46, 43, 43,  0, 46},
+     { 0, 45, 44, 44,  0, 45, 44,  0, 45}},  // even
+    {{44,  0, 45,  0, 45, 44, 44,  0, 45},
+     { 0, 46, 43, 43,  0, 46, 43,  0, 46}},  // odd
+  },
+  {  // s
+    {{48, 45,  0, 45,  0, 48, 48, 45,  0},
+     {46,  0, 47, 47, 46,  0, 47, 46,  0}},  // even
+    {{47, 46,  0, 46,  0, 47, 47, 46,  0},
+     {45,  0, 48, 48, 45,  0, 48, 45,  0}},  // odd
+  },
+};
+
 // The moves the worm head can make across a plaquette (see decisionStructure).
 enum class Move { time, space, diag };
+
+// The colour of a worm (setWormColorU/D/S), and the tail it leaves when it starts, which fixes the
+// winding it adds (w3xAdd_, w8xAdd_; see positionTool).
+enum class Colour { u, d, s };
+struct Tail {
+  const char* name;
+  int w3, w8;
+};
 
 class Lattice {
   ofstream Mfile_, Cfile_;
   string outDir_, BC_;
 
-  int uYopenPlaqPattE02_[9], dYopenPlaqPattE02_[9], sYopenPlaqPattE02_[9], uYopenPlaqPattE13_[9], dYopenPlaqPattE13_[9], sYopenPlaqPattE13_[9], uYopenPlaqPattO02_[9], dYopenPlaqPattO02_[9], sYopenPlaqPattO02_[9], uYopenPlaqPattO13_[9], dYopenPlaqPattO13_[9], sYopenPlaqPattO13_[9];
-  double uYopenProbPattE02_[9], dYopenProbPattE02_[9], sYopenProbPattE02_[9], uYopenProbPattE13_[9], dYopenProbPattE13_[9], sYopenProbPattE13_[9], uYopenProbPattO02_[9], dYopenProbPattO02_[9], sYopenProbPattO02_[9], uYopenProbPattO13_[9], dYopenProbPattO13_[9], sYopenProbPattO13_[9];
-  int uPlaqPattE0_[30], dPlaqPattE0_[30], sPlaqPattE0_[30], uPlaqPattE1_[30], dPlaqPattE1_[30], sPlaqPattE1_[30], uPlaqPattE2_[30], dPlaqPattE2_[30], sPlaqPattE2_[30], uPlaqPattE3_[30], dPlaqPattE3_[30], sPlaqPattE3_[30];
-  int uPlaqPattO0_[30], dPlaqPattO0_[30], sPlaqPattO0_[30], uPlaqPattO1_[30], dPlaqPattO1_[30], sPlaqPattO1_[30], uPlaqPattO2_[30], dPlaqPattO2_[30], sPlaqPattO2_[30], uPlaqPattO3_[30], dPlaqPattO3_[30], sPlaqPattO3_[30];
-  double uProbPattE0_[30], dProbPattE0_[30], sProbPattE0_[30], uProbPattE1_[30], dProbPattE1_[30], sProbPattE1_[30], uProbPattE2_[30], dProbPattE2_[30], sProbPattE2_[30], uProbPattE3_[30], dProbPattE3_[30], sProbPattE3_[30];
-  double uProbPattO0_[30], dProbPattO0_[30], sProbPattO0_[30], uProbPattO1_[30], dProbPattO1_[30], sProbPattO1_[30], uProbPattO2_[30], dProbPattO2_[30], sProbPattO2_[30], uProbPattO3_[30], dProbPattO3_[30], sProbPattO3_[30];
   int Nx_, Ny_, Nt_, nTherm_, N_meas_, l_, lp_, lm_, plaq_, pos_, Nplaq_, worm_n_, worm_np1_, worm_start_, xStart_, yStart_, tStart_, startP_, startColor_, originalColor_, wormColor_, q3_, q8_;
   int t_dir_, sim_, t_bob_, x_bob_, y_bob_, w3xAdd_, w8xAdd_;
  
   vector<int> xytp1_, xytm1_, plaq_record_, plaq_fwd_, plaq_bwd_, next_fwd_, next_bwd_, diag_fwd_, diag_bwd_, chiUp_, chiUm_, chiTp_, chiTm_, chiVp_, chiVm_;
-  double beta_, dt_, mu3_, mu8_, p1_, p2_, p3_, p4_, p5_, p6_, p7_, p8_, p9_, p10_, p11_, p12_, p13_, p14_, p15_, p16_, p17_, p18_, p19_, p20_, p21_, p22_, p23_, p24_, p25_, p26_, p27_, p28_, p29_, p30_, p31_, p32_, p33_, p34_, p35_, p36_, p37_, p38_, p39_, p40_, p41_, p42_, p43_, p44_, p45_, p46_, p47_, p48_;
+  double beta_, dt_, mu3_, mu8_;
+  std::array<double, kNumWeights> p_;  // the run's update weights p01 ... p48
   vector<double> cXTt0tp1_, cXTtp1t0_, cXTt0tm1_, cXTtm1t0_, cXTu0up1_, cXTup1u0_, cXTu0um1_, cXTum1u0_, cXTv0vp1_, cXTv0vm1_, cXTvp1v0_, cXTvm1v0_, doubleNull_; 
 
-  int *pntPlqPatE0_, *pntPlqPatE1_, *pntPlqPatE2_, *pntPlqPatE3_, *pntPlqPatO0_, *pntPlqPatO1_, *pntPlqPatO2_, *pntPlqPatO3_;
-  double *pntPrbPatE0_, *pntPrbPatE1_, *pntPrbPatE2_, *pntPrbPatE3_, *pntPrbPatO0_, *pntPrbPatO1_, *pntPrbPatO2_, *pntPrbPatO3_;
-  int *pntPlqPatE02_, *pntPlqPatE13_, *pntPlqPatO02_, *pntPlqPatO13_;
-  double *pntPrbPatE02_, *pntPrbPatE13_, *pntPrbPatO02_, *pntPrbPatO13_;
+  // Probability patterns of this run ([colour][parity][slot][entry], see kBulkWeight), and the
+  // current worm's patterns ([parity][slot][entry]), set with its colour by setWormColorU/D/S.
+  double bulkProbAll_[3][2][4][30], edgeProbAll_[3][2][2][9];
+  const int (*bulkPlaq_)[4][30];
+  const double (*bulkProb_)[4][30];
+  const int (*edgePlaq_)[2][9];
+  const double (*edgeProb_)[2][9];
   double *corr1, *corr2;
   string tail_;
 
@@ -86,9 +216,16 @@ public:
   void set_AFM_groundstate();
   void wormUpdate();
   void wormUpdateYopen();
-  void decisionStructure(int *, double *, int, int, int);
-  void decisionStructureYopen(int *, double *, int, int, int);
-  void makeMove(Move, int, int, int);  
+  void decisionStructure(const int *, const double *, int, int, int);
+  void decisionStructureYopen(const int *, const double *, int, int, int);
+  // The current worm's patterns for a plaquette of parity par (0 even, 1 odd) in a slot.
+  const int* bulkPlaq(int par, int slot) const { return bulkPlaq_[par][slot]; }
+  const double* bulkProb(int par, int slot) const { return bulkProb_[par][slot]; }
+  const int* edgePlaq(int par, int slot) const { return edgePlaq_[par][slot]; }
+  const double* edgeProb(int par, int slot) const { return edgeProb_[par][slot]; }
+  void setColourPatterns(int c);
+  void makeMove(Move, int, int, int);
+  void startWorm(Colour, const Tail&);  
   void measure();
   void dirMove();
   void positionTool(int, int, int, int);
@@ -123,7 +260,7 @@ void Lattice::impossible(const char* what) {
                                    what, x(worm_n_), y(worm_n_), t(worm_n_), plaq_, pos_, t_dir_, l_));
 }
 
-Lattice::Lattice(string runDir, const string& tag, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& pw, int sim) : outDir_(runDir), BC_(BC), beta_(beta), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_np1_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), startP_(0), startColor_(0), originalColor_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), dt_(4*beta_/Nt_), q3_(0), q8_(0), mu3_(mu3), mu8_(mu8), p1_(pw[0]), p2_(pw[1]), p3_(pw[2]), p4_(pw[3]), p5_(pw[4]), p6_(pw[5]), p7_(pw[6]), p8_(pw[7]), p9_(pw[8]), p10_(pw[9]), p11_(pw[10]), p12_(pw[11]), p13_(pw[12]), p14_(pw[13]), p15_(pw[14]), p16_(pw[15]), p17_(pw[16]), p18_(pw[17]), p19_(pw[18]), p20_(pw[19]), p21_(pw[20]), p22_(pw[21]), p23_(pw[22]), p24_(pw[23]), p25_(pw[24]), p26_(pw[25]), p27_(pw[26]), p28_(pw[27]), p29_(pw[28]), p30_(pw[29]), p31_(pw[30]), p32_(pw[31]), p33_(pw[32]), p34_(pw[33]), p35_(pw[34]), p36_(pw[35]), p37_(pw[36]), p38_(pw[37]), p39_(pw[38]), p40_(pw[39]), p41_(pw[40]), p42_(pw[41]), p43_(pw[42]), p44_(pw[43]), p45_(pw[44]), p46_(pw[45]), p47_(pw[46]), p48_(pw[47]), sim_(sim), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
+Lattice::Lattice(string runDir, const string& tag, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& pw, int sim) : outDir_(runDir), BC_(BC), beta_(beta), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_np1_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), startP_(0), startColor_(0), originalColor_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), dt_(4*beta_/Nt_), q3_(0), q8_(0), mu3_(mu3), mu8_(mu8), p_(pw), sim_(sim), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
 {	
   Mfile_.open(outDir_ + "/M_" + tag + ".dat", ios::out);
   Cfile_.open(outDir_ + "/C_" + tag + ".dat", ios::out);
@@ -559,7 +696,7 @@ inline void Lattice::makeMove(Move move, int s, int t, int d) {
 
 // One step of the worm across the plaquette plaq_: the first move, the second move or a bounce,
 // with the probabilities pr and new plaquette values pl of the pattern for this plaquette type.
-void Lattice::decisionStructure(int *pl, double *pr, int s, int t, int d) {
+void Lattice::decisionStructure(const int *pl, const double *pr, int s, int t, int d) {
   double myRan = ran();
   const int type = plaquetteType(plaq_);
   if (type == 0) impossible("decisionStructure: plaquette is not 1-15 or 101-115");
@@ -579,7 +716,7 @@ void Lattice::decisionStructure(int *pl, double *pr, int s, int t, int d) {
 }
 
 // The same at a y-open edge, where the only move is timelike.
-void Lattice::decisionStructureYopen(int *pl, double *pr, int s, int t, int d) {
+void Lattice::decisionStructureYopen(const int *pl, const double *pr, int s, int t, int d) {
   double myRan = ran();
   const int a = kYopenEdgeOffset[plaquetteType(plaq_)];
   if (a < 0) impossible("decisionStructureYopen: plaquette is not 1-6, 13-15, 101-106 or 113-115");
@@ -674,6 +811,66 @@ void Lattice::bounceTool() {
   }
 }
 
+// The tails a worm can start with, and the winding each adds.
+constexpr Tail kTp{"tp", 2, 0}, kTm{"tm", -2, 0}, kVp{"vp", 1, 1}, kVm{"vm", -1, -1}, kUp{"up", -1, 1},
+    kUm{"um", 1, -1};
+
+// The bit mask of a set of plaquette types.
+constexpr unsigned types(std::initializer_list<int> list) {
+  unsigned mask = 0;
+  for (int type : list) mask |= 1u << type;
+  return mask;
+}
+
+// Start plaquette types that start a worm the same way: originalColor_, and the two equally likely
+// starts (colour and tail).
+struct StartGroup {
+  unsigned types;
+  int originalColor;
+  Colour colour1;
+  Tail tail1;
+  Colour colour2;
+  Tail tail2;
+};
+
+// The start plaquettes possible for one direction, sublattice parity (start plaquette value above
+// 100) and pair of positions, in three groups.
+struct StartCase {
+  int tDir;
+  bool odd;
+  int pos1, pos2;
+  StartGroup groups[3];
+};
+
+constexpr StartCase kStartCases[8] = {
+  {1, false, 0, 2, {{types({1, 6, 9, 10, 13}),  1,   Colour::d, kTm, Colour::s, kVm},
+                    {types({2, 4, 7, 8, 14}),   -1,  Colour::s, kUm, Colour::u, kTp},
+                    {types({3, 5, 11, 12, 15}), 0,   Colour::u, kVp, Colour::d, kUp}}},
+  {1, false, 1, 6, {{types({3, 4, 9, 10, 13}),  11,  Colour::d, kTp, Colour::s, kVp},
+                    {types({1, 5, 7, 8, 14}),   -11, Colour::s, kUp, Colour::u, kTm},
+                    {types({2, 6, 11, 12, 15}), 10,  Colour::u, kVm, Colour::d, kUm}}},
+  {1, true,  3, 4, {{types({1, 6, 9, 10, 13}),  11,  Colour::d, kTp, Colour::s, kVp},
+                    {types({2, 4, 7, 8, 14}),   -11, Colour::s, kUp, Colour::u, kTm},
+                    {types({3, 5, 11, 12, 15}), 10,  Colour::u, kVm, Colour::d, kUm}}},
+  {1, true,  5, 7, {{types({3, 4, 9, 10, 13}),  1,   Colour::d, kTm, Colour::s, kVm},
+                    {types({1, 5, 7, 8, 14}),   -1,  Colour::s, kUm, Colour::u, kTp},
+                    {types({2, 6, 11, 12, 15}), 0,   Colour::u, kVp, Colour::d, kUp}}},
+  {-1, false, 2, 5, {{types({1, 6, 7, 12, 13}),  1,   Colour::d, kTp, Colour::s, kVp},
+                     {types({2, 4, 10, 11, 14}), -1,  Colour::s, kUp, Colour::u, kTm},
+                     {types({3, 5, 8, 9, 15}),   0,   Colour::u, kVm, Colour::d, kUm}}},
+  {-1, false, 1, 3, {{types({3, 4, 7, 12, 13}),  11,  Colour::d, kTm, Colour::s, kVm},
+                     {types({1, 5, 10, 11, 14}), -11, Colour::s, kUm, Colour::u, kTp},
+                     {types({2, 6, 8, 9, 15}),   10,  Colour::u, kVp, Colour::d, kUp}}},
+  {-1, true,  4, 6, {{types({1, 6, 7, 12, 13}),  11,  Colour::d, kTm, Colour::s, kVm},
+                     {types({2, 4, 10, 11, 14}), -11, Colour::s, kUm, Colour::u, kTp},
+                     {types({3, 5, 8, 9, 15}),   10,  Colour::u, kVp, Colour::d, kUp}}},
+  {-1, true,  0, 7, {{types({3, 4, 7, 12, 13}),  1,   Colour::d, kTp, Colour::s, kVp},
+                     {types({1, 5, 10, 11, 14}), -1,  Colour::s, kUp, Colour::u, kTm},
+                     {types({2, 6, 8, 9, 15}),   0,   Colour::u, kVm, Colour::d, kUm}}},
+};
+
+// Sets pos_ from the parity of the worm's start site, then chooses the worm's colour and tail from
+// the plaquette it starts on (kStartCases).
 void Lattice::positionTool(int a, int b, int c, int d) {
   if (y(worm_n_)%2==0) { 
     if (x(worm_n_)%2==0) {
@@ -699,704 +896,71 @@ void Lattice::positionTool(int a, int b, int c, int d) {
   }
   else { impossible("positionTool: x or y is neither even nor odd"); }
  
-  int startPlaq;
-  if(t_dir_==1) {
-    startPlaq=plaq_record_[plaq_fwd_[worm_n_]];
-    if(startPlaq < 100) { // must be on even plaquette
-      if(pos_==0 || pos_==2) { // on even and 0
-	if(startPlaq==1 || startPlaq==6 || startPlaq==9 || startPlaq==10 || startPlaq==13) {
-	  originalColor_=1;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	    
-	  }
-	  else {
-	    setWormColorS();
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else if(startPlaq==2 || startPlaq==4 || startPlaq==7 || startPlaq==8 || startPlaq==14) {
-	  originalColor_=-1;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorU();
-	    tail_="tp";
-	    w3xAdd_=2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==3 || startPlaq==5 || startPlaq==11 || startPlaq==12 || startPlaq==15) {
-	  originalColor_=0;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorD();  
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else if(pos_==1 || pos_==6) { // on even and 1
-	if(startPlaq==3 || startPlaq==4 || startPlaq==9 || startPlaq==10 || startPlaq==13) {
-	  originalColor_=11;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tp";
-	      w3xAdd_=2; w8xAdd_=0;
-	   
-	      }
-	  else {
-	    setWormColorS(); 
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	}
-	else if(startPlaq==1 || startPlaq==5 || startPlaq==7 || startPlaq==8 || startPlaq==14) {
-	  originalColor_=-11;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorU(); 
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==2 || startPlaq==6 || startPlaq==11 || startPlaq==12 || startPlaq==15) {
-	  originalColor_=10;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorD(); 
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else { impossible("positionTool: position not possible on a plaquette of this parity"); }
-    }
-    else if(startPlaq > 100) {
-      if(pos_==3 || pos_==4) { // on odd and 0
-	if(startPlaq==101 || startPlaq==106 || startPlaq==109 || startPlaq==110 || startPlaq==113) {
-	  originalColor_=11;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tp";
-	    w3xAdd_=2;
-	    w8xAdd_=0;
-	  }
-	  else {
-	    setWormColorS();   
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	}
-	else if(startPlaq==102 || startPlaq==104 || startPlaq==107 || startPlaq==108 || startPlaq==114) {
-	  originalColor_=-11;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorU();
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==103 || startPlaq==105 || startPlaq==111 || startPlaq==112 || startPlaq==115) {
-	  originalColor_=10;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorD();  
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else if(pos_==5 || pos_==7) { // on odd and 1
-	if(startPlaq==103 || startPlaq==104 || startPlaq==109 || startPlaq==110 || startPlaq==113) {
-	  originalColor_=1;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	  }
-	  else {
-	    setWormColorS();    
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else if(startPlaq==101 || startPlaq==105 || startPlaq==107 || startPlaq==108 || startPlaq==114) {
-	  originalColor_=-1;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorU(); 
-	    tail_="tp";
-	    w3xAdd_=2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==102 || startPlaq==106 || startPlaq==111 || startPlaq==112 || startPlaq==115) {
-	  originalColor_=0;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorD(); 
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else { impossible("positionTool: position not possible on a plaquette of this parity"); }
-    }
-    else { impossible("positionTool: start plaquette is 100"); }    
+  if (t_dir_ != 1 && t_dir_ != -1) impossible("positionTool: t_dir is not +1 or -1");
+  const int startPlaq = plaq_record_[t_dir_==1 ? plaq_fwd_[worm_n_] : plaq_bwd_[worm_n_]];
+  if (startPlaq == 100) impossible("positionTool: start plaquette is 100");
+  const bool odd = startPlaq > 100;
+  const StartCase* start = nullptr;
+  for (const StartCase& c : kStartCases) {
+    if (c.tDir == t_dir_ && c.odd == odd && (pos_ == c.pos1 || pos_ == c.pos2)) start = &c;
   }
-  else if(t_dir_==-1) {
-    startPlaq=plaq_record_[plaq_bwd_[worm_n_]];
-    if(startPlaq < 100) { // must be on even plaquette
-      if(pos_==2 || pos_==5) { // on even and 2
-	if(startPlaq==1 || startPlaq==6 || startPlaq==7 || startPlaq==12 || startPlaq==13) {
-	  originalColor_=1;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tp";
-	    w3xAdd_=2;
-	    w8xAdd_=0;
-	  }
-	  else {
-	    setWormColorS();  
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	}
-	else if(startPlaq==2 || startPlaq==4 || startPlaq==10 || startPlaq==11 || startPlaq==14) {
-	  originalColor_=-1;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorU(); 
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==3 || startPlaq==5 || startPlaq==8 || startPlaq==9 || startPlaq==15) {
-	  originalColor_=0;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorD();  
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else if(pos_==1 || pos_==3) { // on even and 3
-	if(startPlaq==3 || startPlaq==4 || startPlaq==7 || startPlaq==12 || startPlaq==13) {
-	  originalColor_=11;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	  }
-	  else {
-	    setWormColorS(); 
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else if(startPlaq==1 || startPlaq==5 || startPlaq==10 || startPlaq==11 || startPlaq==14) {
-	  originalColor_=-11;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorU();   
-	    tail_="tp";
-	    w3xAdd_=2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==2 || startPlaq==6 || startPlaq==8 || startPlaq==9 || startPlaq==15) {
-	  originalColor_=10;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorD();
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else { impossible("positionTool: position not possible on a plaquette of this parity"); }
-    }
-    else if(startPlaq > 100) {
-      if(pos_==4 || pos_==6) { // on odd and 2
-	if(startPlaq==101 || startPlaq==106 || startPlaq==107 || startPlaq==112 || startPlaq==113) {
-	  originalColor_=11;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	  }
-	  else {
-	    setWormColorS(); 
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else if(startPlaq==102 || startPlaq==104 || startPlaq==110 || startPlaq==111 || startPlaq==114) {
-	  originalColor_=-11;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorU();  
-	    tail_="tp";
-	    w3xAdd_=2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==103 || startPlaq==105 || startPlaq==108 || startPlaq==109 || startPlaq==115) {
-	  originalColor_=10;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorD();  
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else if(pos_==0 || pos_==7) { // on odd and 3
-	if(startPlaq==103 || startPlaq==104 || startPlaq==107 || startPlaq==112 || startPlaq==113) {
-	  originalColor_=1;
-	  if(ran() < 0.5) {
-	    setWormColorD();
-	    tail_="tp";
-	    w3xAdd_=2;
-	    w8xAdd_=0;
-	  }
-	  else {
-	    setWormColorS(); 
-	    tail_="vp";
-	    w3xAdd_=1;
-	    w8xAdd_=1;
-	  }
-	}
-	else if(startPlaq==101 || startPlaq==105 || startPlaq==110 || startPlaq==111 || startPlaq==114) {
-	  originalColor_=-1;
-	  if(ran() < 0.5) {
-	    setWormColorS();
-	    tail_="up";
-	    w3xAdd_=-1;
-	    w8xAdd_=1;
-	  }
-	  else {
-	    setWormColorU();  
-	    tail_="tm";
-	    w3xAdd_=-2;
-	    w8xAdd_=0;
-	  }
-	}
-	else if(startPlaq==102 || startPlaq==106 || startPlaq==108 || startPlaq==109 || startPlaq==115) {
-	  originalColor_=0;
-	  if(ran() < 0.5) {
-	    setWormColorU();
-	    tail_="vm";
-	    w3xAdd_=-1;
-	    w8xAdd_=-1;
-	  }
-	  else {
-	    setWormColorD(); 
-	    tail_="um";
-	    w3xAdd_=1;
-	    w8xAdd_=-1;
-	  }
-	}
-	else { impossible("positionTool: start plaquette not possible at this position"); }
-      }
-      else { impossible("positionTool: position not possible on a plaquette of this parity"); }
-    }
-    else { impossible("positionTool: start plaquette is 100"); }   
+  if (!start) impossible("positionTool: position not possible on a plaquette of this parity");
+  const int type = plaquetteType(startPlaq);
+  for (const StartGroup& g : start->groups) {
+    if (!((g.types >> type) & 1u)) continue;
+    originalColor_ = g.originalColor;
+    if (ran() < 0.5) startWorm(g.colour1, g.tail1);
+    else startWorm(g.colour2, g.tail2);
+    return;
   }
-  else { impossible("positionTool: t_dir is not +1 or -1"); }
- 
+  impossible("positionTool: start plaquette not possible at this position");
+}
+
+// Gives the new worm its colour and tail.
+void Lattice::startWorm(Colour colour, const Tail& tail) {
+  switch (colour) {
+    case Colour::u: setWormColorU(); break;
+    case Colour::d: setWormColorD(); break;
+    case Colour::s: setWormColorS(); break;
+  }
+  tail_ = tail.name;
+  w3xAdd_ = tail.w3;
+  w8xAdd_ = tail.w8;
+}
+
+// Points the current worm's patterns at those of colour c (0 u, 1 d, 2 s).
+void Lattice::setColourPatterns(int c) {
+  bulkPlaq_ = kBulkPlaq[c];
+  bulkProb_ = bulkProbAll_[c];
+  edgePlaq_ = kEdgePlaq[c];
+  edgeProb_ = edgeProbAll_[c];
 }
 
 void Lattice::setWormColorU() {
-  wormColor_=1;
-
-  pntPlqPatE0_=uPlaqPattE0_;
-  pntPlqPatE1_=uPlaqPattE1_;
-  pntPlqPatE2_=uPlaqPattE2_;
-  pntPlqPatE3_=uPlaqPattE3_;
-  pntPlqPatO0_=uPlaqPattO0_;
-  pntPlqPatO1_=uPlaqPattO1_;
-  pntPlqPatO2_=uPlaqPattO2_;
-  pntPlqPatO3_=uPlaqPattO3_;
-  
-  pntPrbPatE0_=uProbPattE0_;
-  pntPrbPatE1_=uProbPattE1_;
-  pntPrbPatE2_=uProbPattE2_;
-  pntPrbPatE3_=uProbPattE3_;
-  pntPrbPatO0_=uProbPattO0_;
-  pntPrbPatO1_=uProbPattO1_;
-  pntPrbPatO2_=uProbPattO2_;
-  pntPrbPatO3_=uProbPattO3_;
-
-  pntPlqPatE02_=uYopenPlaqPattE02_;
-  pntPlqPatE13_=uYopenPlaqPattE13_;
-  pntPlqPatO02_=uYopenPlaqPattO02_;
-  pntPlqPatO13_=uYopenPlaqPattO13_;
-
-  pntPrbPatE02_=uYopenProbPattE02_;
-  pntPrbPatE13_=uYopenProbPattE13_;
-  pntPrbPatO02_=uYopenProbPattO02_;
-  pntPrbPatO13_=uYopenProbPattO13_;
-
+  wormColor_ = 1;
+  setColourPatterns(0);
 }
 
 void Lattice::setWormColorD() {
   wormColor_ = -1;
-
-  pntPlqPatE0_=dPlaqPattE0_;
-  pntPlqPatE1_=dPlaqPattE1_;
-  pntPlqPatE2_=dPlaqPattE2_;
-  pntPlqPatE3_=dPlaqPattE3_;
-  pntPlqPatO0_=dPlaqPattO0_;
-  pntPlqPatO1_=dPlaqPattO1_;
-  pntPlqPatO2_=dPlaqPattO2_;
-  pntPlqPatO3_=dPlaqPattO3_;
-  
-  pntPrbPatE0_=dProbPattE0_;
-  pntPrbPatE1_=dProbPattE1_;
-  pntPrbPatE2_=dProbPattE2_;
-  pntPrbPatE3_=dProbPattE3_;
-  pntPrbPatO0_=dProbPattO0_;
-  pntPrbPatO1_=dProbPattO1_;
-  pntPrbPatO2_=dProbPattO2_;
-  pntPrbPatO3_=dProbPattO3_;
-
-  pntPlqPatE02_=dYopenPlaqPattE02_;
-  pntPlqPatE13_=dYopenPlaqPattE13_;
-  pntPlqPatO02_=dYopenPlaqPattO02_;
-  pntPlqPatO13_=dYopenPlaqPattO13_;
-
-  pntPrbPatE02_=dYopenProbPattE02_;
-  pntPrbPatE13_=dYopenProbPattE13_;
-  pntPrbPatO02_=dYopenProbPattO02_;
-  pntPrbPatO13_=dYopenProbPattO13_;
-
+  setColourPatterns(1);
 }
 
 void Lattice::setWormColorS() {
   wormColor_ = 0;
-
-  pntPlqPatE0_=sPlaqPattE0_;
-  pntPlqPatE1_=sPlaqPattE1_;
-  pntPlqPatE2_=sPlaqPattE2_;
-  pntPlqPatE3_=sPlaqPattE3_;
-  pntPlqPatO0_=sPlaqPattO0_;
-  pntPlqPatO1_=sPlaqPattO1_;
-  pntPlqPatO2_=sPlaqPattO2_;
-  pntPlqPatO3_=sPlaqPattO3_;
-  
-  pntPrbPatE0_=sProbPattE0_;
-  pntPrbPatE1_=sProbPattE1_;
-  pntPrbPatE2_=sProbPattE2_;
-  pntPrbPatE3_=sProbPattE3_;
-  pntPrbPatO0_=sProbPattO0_;
-  pntPrbPatO1_=sProbPattO1_;
-  pntPrbPatO2_=sProbPattO2_;
-  pntPrbPatO3_=sProbPattO3_;
-
-  pntPlqPatE02_=sYopenPlaqPattE02_;
-  pntPlqPatE13_=sYopenPlaqPattE13_;
-  pntPlqPatO02_=sYopenPlaqPattO02_;
-  pntPlqPatO13_=sYopenPlaqPattO13_;
-
-  pntPrbPatE02_=sYopenProbPattE02_;
-  pntPrbPatE13_=sYopenProbPattE13_;
-  pntPrbPatO02_=sYopenProbPattO02_;
-  pntPrbPatO13_=sYopenProbPattO13_;
-
+  setColourPatterns(2);
 }
 
+// Fills the probability patterns from the run's weights (kBulkWeight, kEdgeWeight).
 void Lattice::setPatts() {
-  int uPlaqPattE0Temp[30]={0,0,0,6,9,13,10,13,0,1,0,0,1,13,0,9,0,0,0,0,0,10,6,13,0,0,1,10,6,9};
-  int dPlaqPattE0Temp[30]={7,14,0,0,0,4,0,0,8,14,0,2,0,0,0,0,0,8,4,14,2,14,0,7,4,7,0,0,2,8};
-  int sPlaqPattE0Temp[30]={0,5,11,15,0,0,0,3,0,0,12,15,0,12,5,15,3,15,0,11,0,0,0,0,3,12,5,11,0,0};
-
-  int uPlaqPattE1Temp[30]={10,13,0,4,0,0,0,0,0,3,9,13,4,13,0,9,0,0,0,0,0,10,3,13,0,0,4,10,3,9};
-  int dPlaqPattE1Temp[30]={0,0,8,14,0,5,7,14,0,0,0,1,0,0,0,0,0,8,1,14,5,14,0,7,1,7,0,0,5,8};
-  int sPlaqPattE1Temp[30]={0,6,0,0,12,15,0,2,11,15,0,0,0,12,2,15,6,15,0,11,0,0,0,0,6,12,2,11,0,0};
-
-  int uPlaqPattE2Temp[30]={0,0,0,6,12,13,7,13,0,1,0,0,0,0,0,7,6,13,1,13,0,12,0,0,0,0,1,7,6,12};
-  int dPlaqPattE2Temp[30]={10,14,0,0,0,4,0,0,11,14,0,2,4,14,2,14,0,10,0,0,0,0,0,11,4,10,0,0,2,11};
-  int sPlaqPattE2Temp[30]={0,5,8,15,0,0,0,3,0,0,9,15,0,8,0,0,0,0,0,9,5,15,3,15,3,9,5,8,0,0};
-
-  int uPlaqPattE3Temp[30]={7,13,0,4,0,0,0,0,0,3,12,13,0,0,0,7,3,13,4,13,0,12,0,0,0,0,4,7,3,12};
-  int dPlaqPattE3Temp[30]={0,0,11,14,0,5,10,14,0,0,0,1,1,14,5,14,0,10,0,0,0,0,0,11,1,10,0,0,5,11};
-  int sPlaqPattE3Temp[30]={0,6,0,0,9,15,0,2,8,15,0,0,0,8,0,0,0,0,0,9,2,15,6,15,6,9,2,8,0,0};
-
-  int uPlaqPattO0Temp[30]={100,100,100,106,109,113,110,113,100,101,100,100,101,113,100,109,100,100,100,100,100,110,106,113,100,100,101,110,106,109};
-  int dPlaqPattO0Temp[30]={107,114,100,100,100,104,100,100,108,114,100,102,100,100,100,100,100,108,104,114,102,114,100,107,104,107,100,100,102,108};
-  int sPlaqPattO0Temp[30]={100,105,111,115,100,100,100,103,100,100,112,115,100,112,105,115,103,115,100,111,100,100,100,100,103,112,105,111,100,100};
-
-  int uPlaqPattO1Temp[30]={110,113,100,104,100,100,100,100,100,103,109,113,104,113,100,109,100,100,100,100,100,110,103,113,100,100,104,110,103,109};
-  int dPlaqPattO1Temp[30]={100,100,108,114,100,105,107,114,100,100,100,101,100,100,100,100,100,108,101,114,105,114,100,107,101,107,100,100,105,108};
-  int sPlaqPattO1Temp[30]={100,106,100,100,112,115,100,102,111,115,100,100,100,112,102,115,106,115,100,111,100,100,100,100,106,112,102,111,100,100};
-
-  int uPlaqPattO2Temp[30]={100,100,100,106,112,113,107,113,100,101,100,100,100,100,100,107,106,113,101,113,100,112,100,100,100,100,101,107,106,112};
-  int dPlaqPattO2Temp[30]={110,114,100,100,100,104,100,100,111,114,100,102,104,114,102,114,100,110,100,100,100,100,100,111,104,110,100,100,102,111};
-  int sPlaqPattO2Temp[30]={100,105,108,115,100,100,100,103,100,100,109,115,100,108,100,100,100,100,100,109,105,115,103,115,103,109,105,108,100,100};
-
-  int uPlaqPattO3Temp[30]={107,113,100,104,100,100,100,100,100,103,112,113,100,100,100,107,103,113,104,113,100,112,100,100,100,100,104,107,103,112};
-  int dPlaqPattO3Temp[30]={100,100,111,114,100,105,110,114,100,100,100,101,101,114,105,114,100,110,100,100,100,100,100,111,101,110,100,100,105,111};
-  int sPlaqPattO3Temp[30]={100,106,100,100,109,115,100,102,108,115,100,100,100,108,100,100,100,100,100,109,102,115,106,115,106,109,102,108,100,100};
-
-  int uYopenPlaqPattTempE02[9]={0,6,13,13,1,0,0,1,6};
-  int dYopenPlaqPattTempE02[9]={14,0,4,0,14,2,4,0,2};
-  int sYopenPlaqPattTempE02[9]={5,15,0,3,0,15,3,5,0};
-
-  int uYopenPlaqPattTempE13[9]={13,4,0,0,3,13,0,4,3};
-  int dYopenPlaqPattTempE13[9]={0,14,5,14,0,1,1,0,5};
-  int sYopenPlaqPattTempE13[9]={6,0,15,2,15,0,6,2,0};
-
-  int uYopenPlaqPattTempO02[9]={0,106,113,113,101,0,0,101,106};
-  int dYopenPlaqPattTempO02[9]={114,0,104,0,114,102,104,0,102};
-  int sYopenPlaqPattTempO02[9]={105,115,0,103,0,115,103,105,0};
-
-  int uYopenPlaqPattTempO13[9]={113,104,0,0,103,113,0,104,103};
-  int dYopenPlaqPattTempO13[9]={0,114,105,114,0,101,101,0,105};
-  int sYopenPlaqPattTempO13[9]={106,0,115,102,115,0,106,102,0};
-
-  double uYopenProbPattTempE02[9]={0,p44_,p47_,p44_,p47_,0,0,p44_,p47_};
-  double dYopenProbPattTempE02[9]={p43_,0,p46_,0,p46_,p43_,p43_,0,p46_};
-  double sYopenProbPattTempE02[9]={p48_,p45_,0,p45_,0,p48_,p48_,p45_,0};
-
-  double uYopenProbPattTempE13[9]={p43_,p48_,0,0,p43_,p48_,0,p43_,p48_};
-  double dYopenProbPattTempE13[9]={0,p45_,p44_,p44_,0,p45_,p44_,0,p45_};
-  double sYopenProbPattTempE13[9]={p46_,0,p47_,p47_,p46_,0,p47_,p46_,0};
-
-  double uYopenProbPattTempO02[9]={0,p43_,p48_,p43_,p48_,0,0,p43_,p48_};
-  double dYopenProbPattTempO02[9]={p44_,0,p45_,0,p45_,p44_,p44_,0,p45_};
-  double sYopenProbPattTempO02[9]={p47_,p46_,0,p46_,0,p47_,p47_,p46_,0};
-
-  double uYopenProbPattTempO13[9]={p44_,p47_,0,0,p44_,p47_,0,p44_,p47_};
-  double dYopenProbPattTempO13[9]={0,p46_,p43_,p43_,0,p46_,p43_,0,p46_};
-  double sYopenProbPattTempO13[9]={p45_,0,p48_,p48_,p45_,0,p48_,p45_,0};
-
-  double uProbPattE0Temp[30]={0,0,0,p39_,p29_,p30_,p11_,p12_,0,p38_,0,0,p2_,p1_,0,1,0,0,0,0,0,1,p32_,p31_,0,0,p4_,p3_,p34_,p33_};
-  double dProbPattE0Temp[30]={p5_,p6_,0,0,0,p41_,0,0,p23_,p24_,0,p40_,0,0,0,0,0,1,p8_,p7_,p14_,p13_,0,1,p10_,p9_,0,0,p16_,p15_};
-  double sProbPattE0Temp[30]={0,p37_,p17_,p18_,0,0,0,p42_,0,0,p35_,p36_,0,1,p20_,p19_,p26_,p25_,0,1,0,0,0,0,p28_,p27_,p22_,p21_,0,0};
-
-  double uProbPattE1Temp[30]={p5_,p6_,0,p37_,0,0,0,0,0,p40_,p35_,p36_,p8_,p7_,0,1,0,0,0,0,0,1,p26_,p25_,0,0,p10_,p9_,p28_,p27_};
-  double dProbPattE1Temp[30]={0,0,p17_,p18_,0,p39_,p11_,p12_,0,0,0,p42_,0,0,0,0,0,1,p2_,p1_,p20_,p19_,0,1,p4_,p3_,0,0,p22_,p21_};
-  double sProbPattE1Temp[30]={0,p41_,0,0,p29_,p30_,0,p38_,p23_,p24_,0,0,0,1,p14_,p13_,p32_,p31_,0,1,0,0,0,0,p34_,p33_,p16_,p15_,0,0};
-
-  double uProbPattE2Temp[30]={0,0,0,p39_,p29_,p30_,p11_,p12_,0,p38_,0,0,0,0,0,1,p32_,p31_,p2_,p1_,0,1,0,0,0,0,p4_,p3_,p34_,p33_};
-  double dProbPattE2Temp[30]={p5_,p6_,0,0,0,p41_,0,0,p23_,p24_,0,p40_,p8_,p7_,p14_,p13_,0,1,0,0,0,0,0,1,p10_,p9_,0,0,p16_,p15_};
-  double sProbPattE2Temp[30]={0,p37_,p17_,p18_,0,0,0,p42_,0,0,p35_,p36_,0,1,0,0,0,0,0,1,p20_,p19_,p26_,p25_,p28_,p27_,p22_,p21_,0,0};
-
-  double uProbPattE3Temp[30]={p5_,p6_,0,p37_,0,0,0,0,0,p40_,p35_,p36_,0,0,0,1,p26_,p25_,p8_,p7_,0,1,0,0,0,0,p10_,p9_,p28_,p27_};
-  double dProbPattE3Temp[30]={0,0,p17_,p18_,0,p39_,p11_,p12_,0,0,0,p42_,p2_,p1_,p20_,p19_,0,1,0,0,0,0,0,1,p4_,p3_,0,0,p22_,p21_};
-  double sProbPattE3Temp[30]={0,p41_,0,0,p29_,p30_,0,p38_,p23_,p24_,0,0,0,1,0,0,0,0,0,1,p14_,p13_,p32_,p31_,p34_,p33_,p16_,p15_,0,0}; 
-
-  double uProbPattO0Temp[30]={0,0,0,p40_,p35_,p36_,p5_,p6_,0,p37_,0,0,p8_,p7_,0,1,0,0,0,0,0,1,p26_,p25_,0,0,p10_,p9_,p28_,p27_};
-  double dProbPattO0Temp[30]={p11_,p12_,0,0,0,p42_,0,0,p17_,p18_,0,p39_,0,0,0,0,0,1,p2_,p1_,p20_,p19_,0,1,p4_,p3_,0,0,p22_,p21_};
-  double sProbPattO0Temp[30]={0,p38_,p23_,p24_,0,0,0,p41_,0,0,p29_,p30_,0,1,p14_,p13_,p32_,p31_,0,1,0,0,0,0,p34_,p33_,p16_,p15_,0,0};
-
-  double uProbPattO1Temp[30]={p11_,p12_,0,p38_,0,0,0,0,0,p39_,p29_,p30_,p2_,p1_,0,1,0,0,0,0,0,1,p32_,p31_,0,0,p4_,p3_,p34_,p33_};
-  double dProbPattO1Temp[30]={0,0,p23_,p24_,0,p40_,p5_,p6_,0,0,0,p41_,0,0,0,0,0,1,p8_,p7_,p14_,p13_,0,1,p10_,p9_,0,0,p16_,p15_};
-  double sProbPattO1Temp[30]={0,p42_,0,0,p35_,p36_,0,p37_,p17_,p18_,0,0,0,1,p20_,p19_,p26_,p25_,0,1,0,0,0,0,p28_,p27_,p22_,p21_,0,0};
-
-  double uProbPattO2Temp[30]={0,0,0,p40_,p35_,p36_,p5_,p6_,0,p37_,0,0,0,0,0,1,p26_,p25_,p8_,p7_,0,1,0,0,0,0,p10_,p9_,p28_,p27_};
-  double dProbPattO2Temp[30]={p11_,p12_,0,0,0,p42_,0,0,p17_,p18_,0,p39_,p2_,p1_,p20_,p19_,0,1,0,0,0,0,0,1,p4_,p3_,0,0,p22_,p21_};
-  double sProbPattO2Temp[30]={0,p38_,p23_,p24_,0,0,0,p41_,0,0,p29_,p30_,0,1,0,0,0,0,0,1,p14_,p13_,p32_,p31_,p34_,p33_,p16_,p15_,0,0};
-
-  double uProbPattO3Temp[30]={p11_,p12_,0,p38_,0,0,0,0,0,p39_,p29_,p30_,0,0,0,1,p32_,p31_,p2_,p1_,0,1,0,0,0,0,p4_,p3_,p34_,p33_};
-  double dProbPattO3Temp[30]={0,0,p23_,p24_,0,p40_,p5_,p6_,0,0,0,p41_,p8_,p7_,p14_,p13_,0,1,0,0,0,0,0,1,p10_,p9_,0,0,p16_,p15_};
-  double sProbPattO3Temp[30]={0,p42_,0,0,p35_,p36_,0,p37_,p17_,p18_,0,0,0,1,0,0,0,0,0,1,p20_,p19_,p26_,p25_,p28_,p27_,p22_,p21_,0,0}; 
-
-
-  for(int i = 0; i < 9; i++) {
-    uYopenPlaqPattE02_[i]=uYopenPlaqPattTempE02[i];
-    dYopenPlaqPattE02_[i]=dYopenPlaqPattTempE02[i];
-    sYopenPlaqPattE02_[i]=sYopenPlaqPattTempE02[i];
-   
-    uYopenPlaqPattE13_[i]=uYopenPlaqPattTempE13[i];
-    dYopenPlaqPattE13_[i]=dYopenPlaqPattTempE13[i];
-    sYopenPlaqPattE13_[i]=sYopenPlaqPattTempE13[i];
-
-    uYopenPlaqPattO02_[i]=uYopenPlaqPattTempO02[i];
-    dYopenPlaqPattO02_[i]=dYopenPlaqPattTempO02[i];
-    sYopenPlaqPattO02_[i]=sYopenPlaqPattTempO02[i];
-   
-    uYopenPlaqPattO13_[i]=uYopenPlaqPattTempO13[i];
-    dYopenPlaqPattO13_[i]=dYopenPlaqPattTempO13[i];
-    sYopenPlaqPattO13_[i]=sYopenPlaqPattTempO13[i];
-
-
-    uYopenProbPattE02_[i]=uYopenProbPattTempE02[i];
-    dYopenProbPattE02_[i]=dYopenProbPattTempE02[i];
-    sYopenProbPattE02_[i]=sYopenProbPattTempE02[i];
-
-    uYopenProbPattE13_[i]=uYopenProbPattTempE13[i];
-    dYopenProbPattE13_[i]=dYopenProbPattTempE13[i];
-    sYopenProbPattE13_[i]=sYopenProbPattTempE13[i];
-
-    uYopenProbPattO02_[i]=uYopenProbPattTempO02[i];
-    dYopenProbPattO02_[i]=dYopenProbPattTempO02[i];
-    sYopenProbPattO02_[i]=sYopenProbPattTempO02[i];
-
-    uYopenProbPattO13_[i]=uYopenProbPattTempO13[i];
-    dYopenProbPattO13_[i]=dYopenProbPattTempO13[i];
-    sYopenProbPattO13_[i]=sYopenProbPattTempO13[i];
-  }
-
-  for(int i = 0; i < 30; i++) {
-    
-    uPlaqPattE0_[i]=uPlaqPattE0Temp[i];
-    dPlaqPattE0_[i]=dPlaqPattE0Temp[i];
-    sPlaqPattE0_[i]=sPlaqPattE0Temp[i];
-    uPlaqPattE1_[i]=uPlaqPattE1Temp[i];
-    dPlaqPattE1_[i]=dPlaqPattE1Temp[i];
-    sPlaqPattE1_[i]=sPlaqPattE1Temp[i];
-    uPlaqPattE2_[i]=uPlaqPattE2Temp[i];
-    dPlaqPattE2_[i]=dPlaqPattE2Temp[i];
-    sPlaqPattE2_[i]=sPlaqPattE2Temp[i];
-    uPlaqPattE3_[i]=uPlaqPattE3Temp[i];
-    dPlaqPattE3_[i]=dPlaqPattE3Temp[i];
-    sPlaqPattE3_[i]=sPlaqPattE3Temp[i];
-    
-    uPlaqPattO0_[i]=uPlaqPattO0Temp[i];
-    dPlaqPattO0_[i]=dPlaqPattO0Temp[i];
-    sPlaqPattO0_[i]=sPlaqPattO0Temp[i];
-    uPlaqPattO1_[i]=uPlaqPattO1Temp[i];
-    dPlaqPattO1_[i]=dPlaqPattO1Temp[i];
-    sPlaqPattO1_[i]=sPlaqPattO1Temp[i];
-    uPlaqPattO2_[i]=uPlaqPattO2Temp[i];
-    dPlaqPattO2_[i]=dPlaqPattO2Temp[i];
-    sPlaqPattO2_[i]=sPlaqPattO2Temp[i];
-    uPlaqPattO3_[i]=uPlaqPattO3Temp[i];
-    dPlaqPattO3_[i]=dPlaqPattO3Temp[i];
-    sPlaqPattO3_[i]=sPlaqPattO3Temp[i];
-    
-    uProbPattE0_[i]=uProbPattE0Temp[i];
-    dProbPattE0_[i]=dProbPattE0Temp[i];
-    sProbPattE0_[i]=sProbPattE0Temp[i];
-    uProbPattE1_[i]=uProbPattE1Temp[i];
-    dProbPattE1_[i]=dProbPattE1Temp[i];
-    sProbPattE1_[i]=sProbPattE1Temp[i];
-    uProbPattE2_[i]=uProbPattE2Temp[i];
-    dProbPattE2_[i]=dProbPattE2Temp[i];
-    sProbPattE2_[i]=sProbPattE2Temp[i];
-    uProbPattE3_[i]=uProbPattE3Temp[i];
-    dProbPattE3_[i]=dProbPattE3Temp[i];
-    sProbPattE3_[i]=sProbPattE3Temp[i];
-    
-    uProbPattO0_[i]=uProbPattO0Temp[i];
-    dProbPattO0_[i]=dProbPattO0Temp[i];
-    sProbPattO0_[i]=sProbPattO0Temp[i];
-    uProbPattO1_[i]=uProbPattO1Temp[i];
-    dProbPattO1_[i]=dProbPattO1Temp[i];
-    sProbPattO1_[i]=sProbPattO1Temp[i];
-    uProbPattO2_[i]=uProbPattO2Temp[i];
-    dProbPattO2_[i]=dProbPattO2Temp[i];
-    sProbPattO2_[i]=sProbPattO2Temp[i];
-    uProbPattO3_[i]=uProbPattO3Temp[i];
-    dProbPattO3_[i]=dProbPattO3Temp[i];
-    sProbPattO3_[i]=sProbPattO3Temp[i];
-  
-  } 
-    
+  auto weight = [&](int k) { return k == 0 ? 0.0 : k == kOne ? 1.0 : p_[k - 1]; };
+  for (int c = 0; c < 3; c++)
+    for (int par = 0; par < 2; par++) {
+      for (int slot = 0; slot < 4; slot++)
+        for (int i = 0; i < 30; i++) bulkProbAll_[c][par][slot][i] = weight(kBulkWeight[c][par][slot][i]);
+      for (int slot = 0; slot < 2; slot++)
+        for (int i = 0; i < 9; i++) edgeProbAll_[c][par][slot][i] = weight(kEdgeWeight[c][par][slot][i]);
+    }
 }
 
 
@@ -1419,28 +983,28 @@ void Lattice::wormUpdate() {
       plaq_=plaq_record_[Nplaq_];
     
       if (pos_==0) {      // 0 e
-	decisionStructure(pntPlqPatE0_,pntPrbPatE0_,1,2,3);
+	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),1,2,3);
       }
       else if (pos_==1) { // 1 e
-	decisionStructure(pntPlqPatE1_,pntPrbPatE1_,0,3,2);
+	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),0,3,2);
       }
       else if (pos_==2) { // 0 e
-	decisionStructure(pntPlqPatE0_,pntPrbPatE0_,6,5,1);
+	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),6,5,1);
       }
       else if (pos_==3) { // 0 o
-	decisionStructure(pntPlqPatO0_,pntPrbPatO0_,7,4,0);
+	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),7,4,0);
       } 
       else if (pos_==4) { // 0 o
-	decisionStructure(pntPlqPatO0_,pntPrbPatO0_,5,6,7);
+	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),5,6,7);
       }
       else if (pos_==5) { // 1 o
-	decisionStructure(pntPlqPatO1_,pntPrbPatO1_,4,7,6);
+	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),4,7,6);
       }
       else if (pos_==6) { // 1 e
-	decisionStructure(pntPlqPatE1_,pntPrbPatE1_,2,1,5);
+	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),2,1,5);
       }
       else if (pos_==7) { // 1 o
-	decisionStructure(pntPlqPatO1_,pntPrbPatO1_,3,0,4);
+	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),3,0,4);
       } 
       else { impossible("wormUpdate: pos is not 0-7"); }      
     }
@@ -1450,28 +1014,28 @@ void Lattice::wormUpdate() {
       plaq_=plaq_record_[Nplaq_];
       
       if (pos_==0) {      // 3 o
-	decisionStructure(pntPlqPatO3_,pntPrbPatO3_,4,7,3);
+	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),4,7,3);
       }
       else if (pos_==1) { // 3 e
-	decisionStructure(pntPlqPatE3_,pntPrbPatE3_,5,6,2);
+	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),5,6,2);
       }
       else if (pos_==2) { // 2 e
-	decisionStructure(pntPlqPatE2_,pntPrbPatE2_,3,0,1);
+	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),3,0,1);
       }
       else if (pos_==3) { // 3 e
-	decisionStructure(pntPlqPatE3_,pntPrbPatE3_,2,1,0);
+	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),2,1,0);
       }
       else if (pos_==4) { // 2 o
-	decisionStructure(pntPlqPatO2_,pntPrbPatO2_,0,3,7);
+	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),0,3,7);
       }
       else if (pos_==5) { // 2 e
-	decisionStructure(pntPlqPatE2_,pntPrbPatE2_,1,2,6);
+	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),1,2,6);
       }
       else if (pos_==6) { // 2 o
-	decisionStructure(pntPlqPatO2_,pntPrbPatO2_,7,4,5);
+	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),7,4,5);
       }
       else if (pos_==7) { // 3 o
-	decisionStructure(pntPlqPatO3_,pntPrbPatO3_,6,5,4);
+	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),6,5,4);
       }
       else { impossible("wormUpdate: pos is not 0-7"); }      
     }
@@ -1505,53 +1069,53 @@ void Lattice::wormUpdateYopen() {
       
       if( (this->*fwdEdge)() ) { 
 	if (pos_==0) {      // 0 e
-	  decisionStructureYopen(pntPlqPatE02_,pntPrbPatE02_,1,2,3);
+	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),1,2,3);
 	}
 	else if (pos_==1) { // 1 e
-	  decisionStructureYopen(pntPlqPatE13_,pntPrbPatE13_,0,3,2);
+	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),0,3,2);
 	}
 	else if (pos_==2) { // 0 e
-	  decisionStructureYopen(pntPlqPatE02_,pntPrbPatE02_,6,5,1);
+	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),6,5,1);
 	}
 	else if (pos_==3) { // 0 o
-	  decisionStructureYopen(pntPlqPatO02_,pntPrbPatO02_,7,4,0);
+	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),7,4,0);
 	} 
 	else if (pos_==4) { // 0 o
-	  decisionStructureYopen(pntPlqPatO02_,pntPrbPatO02_,5,6,7);
+	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),5,6,7);
 	}
 	else if (pos_==5) { // 1 o
-	  decisionStructureYopen(pntPlqPatO13_,pntPrbPatO13_,4,7,6);
+	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),4,7,6);
 	}
 	else if (pos_==6) { // 1 e
-	  decisionStructureYopen(pntPlqPatE13_,pntPrbPatE13_,2,1,5);
+	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),2,1,5);
 	}
 	else if (pos_==7) { // 1 o
-	  decisionStructureYopen(pntPlqPatO13_,pntPrbPatO13_,3,0,4);
+	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),3,0,4);
 	} 
       }
       else if (pos_==0) {      // 0 e
-	decisionStructure(pntPlqPatE0_,pntPrbPatE0_,1,2,3);
+	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),1,2,3);
       }
       else if (pos_==1) { // 1 e
-	decisionStructure(pntPlqPatE1_,pntPrbPatE1_,0,3,2);
+	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),0,3,2);
       }
       else if (pos_==2) { // 0 e
-	decisionStructure(pntPlqPatE0_,pntPrbPatE0_,6,5,1);
+	decisionStructure(bulkPlaq(0,0),bulkProb(0,0),6,5,1);
       }
       else if (pos_==3) { // 0 o
-	decisionStructure(pntPlqPatO0_,pntPrbPatO0_,7,4,0);
+	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),7,4,0);
       } 
       else if (pos_==4) { // 0 o
-	decisionStructure(pntPlqPatO0_,pntPrbPatO0_,5,6,7);
+	decisionStructure(bulkPlaq(1,0),bulkProb(1,0),5,6,7);
       }
       else if (pos_==5) { // 1 o
-	decisionStructure(pntPlqPatO1_,pntPrbPatO1_,4,7,6);
+	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),4,7,6);
       }
       else if (pos_==6) { // 1 e
-	decisionStructure(pntPlqPatE1_,pntPrbPatE1_,2,1,5);
+	decisionStructure(bulkPlaq(0,1),bulkProb(0,1),2,1,5);
       }
       else if (pos_==7) { // 1 o
-	decisionStructure(pntPlqPatO1_,pntPrbPatO1_,3,0,4);
+	decisionStructure(bulkPlaq(1,1),bulkProb(1,1),3,0,4);
       }  
     }
     else if (t_dir_==-1) {
@@ -1561,53 +1125,53 @@ void Lattice::wormUpdateYopen() {
     
       if( (this->*bwdEdge)() ) { 
 	if (pos_==0) {      // 3 o
-	  decisionStructureYopen(pntPlqPatO13_,pntPrbPatO13_,4,7,3);
+	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),4,7,3);
 	}
 	else if (pos_==1) { // 3 e
-	  decisionStructureYopen(pntPlqPatE13_,pntPrbPatE13_,5,6,2);
+	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),5,6,2);
 	}
 	else if (pos_==2) { // 2 e
-	  decisionStructureYopen(pntPlqPatE02_,pntPrbPatE02_,3,0,1);
+	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),3,0,1);
 	}
 	else if (pos_==3) { // 3 e
-	  decisionStructureYopen(pntPlqPatE13_,pntPrbPatE13_,2,1,0);
+	  decisionStructureYopen(edgePlaq(0,1),edgeProb(0,1),2,1,0);
 	}
 	else if (pos_==4) { // 2 o
-	  decisionStructureYopen(pntPlqPatO02_,pntPrbPatO02_,0,3,7);
+	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),0,3,7);
 	}
 	else if (pos_==5) { // 2 e
-	  decisionStructureYopen(pntPlqPatE02_,pntPrbPatE02_,1,2,6);
+	  decisionStructureYopen(edgePlaq(0,0),edgeProb(0,0),1,2,6);
 	}
 	else if (pos_==6) { // 2 o
-	  decisionStructureYopen(pntPlqPatO02_,pntPrbPatO02_,7,4,5);
+	  decisionStructureYopen(edgePlaq(1,0),edgeProb(1,0),7,4,5);
 	}
 	else if (pos_==7) { // 3 o
-	  decisionStructureYopen(pntPlqPatO13_,pntPrbPatO13_,6,5,4);
+	  decisionStructureYopen(edgePlaq(1,1),edgeProb(1,1),6,5,4);
 	}
       }
       else if (pos_==0) {      // 3 o
-	decisionStructure(pntPlqPatO3_,pntPrbPatO3_,4,7,3);
+	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),4,7,3);
       }
       else if (pos_==1) { // 3 e
-	decisionStructure(pntPlqPatE3_,pntPrbPatE3_,5,6,2);
+	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),5,6,2);
       }
       else if (pos_==2) { // 2 e
-	decisionStructure(pntPlqPatE2_,pntPrbPatE2_,3,0,1);
+	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),3,0,1);
       }
       else if (pos_==3) { // 3 e
-	decisionStructure(pntPlqPatE3_,pntPrbPatE3_,2,1,0);
+	decisionStructure(bulkPlaq(0,3),bulkProb(0,3),2,1,0);
       }
       else if (pos_==4) { // 2 o
-	decisionStructure(pntPlqPatO2_,pntPrbPatO2_,0,3,7);
+	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),0,3,7);
       }
       else if (pos_==5) { // 2 e
-	decisionStructure(pntPlqPatE2_,pntPrbPatE2_,1,2,6);
+	decisionStructure(bulkPlaq(0,2),bulkProb(0,2),1,2,6);
       }
       else if (pos_==6) { // 2 o
-	decisionStructure(pntPlqPatO2_,pntPrbPatO2_,7,4,5);
+	decisionStructure(bulkPlaq(1,2),bulkProb(1,2),7,4,5);
       }
       else if (pos_==7) { // 3 o
-	decisionStructure(pntPlqPatO3_,pntPrbPatO3_,6,5,4);
+	decisionStructure(bulkPlaq(1,3),bulkProb(1,3),6,5,4);
       }
     }
     else { impossible("wormUpdateYopen: t_dir is not +1 or -1"); }
