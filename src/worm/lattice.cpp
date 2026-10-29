@@ -44,6 +44,9 @@ inline double ran() {ranlxd(rvec,1);return rvec[0];} //Generates random number b
 inline int ranspin() {ranlxd(rvec,1);return int(2*rvec[0]);} //Generates random number 0 or 1
 inline int ranint(int max) {ranlxd(rvec,1);return int(max*rvec[0]);} //Generates integer random number from 0 to max-1
 
+// The moves the worm head can make across a plaquette (see decisionStructure).
+enum class Move { time, space, diag };
+
 class Lattice {
   ofstream Mfile_, Cfile_;
   string outDir_, BC_;
@@ -84,7 +87,8 @@ public:
   void wormUpdate();
   void wormUpdateYopen();
   void decisionStructure(int *, double *, int, int, int);
-  void decisionStructureYopen(int *, double *, int, int, int);  
+  void decisionStructureYopen(int *, double *, int, int, int);
+  void makeMove(Move, int, int, int);  
   void measure();
   void dirMove();
   void positionTool(int, int, int, int);
@@ -97,7 +101,7 @@ public:
   void bounceTool();
   void selectCorrelators();
   void buildCorrelator(double*, double*);
-  [[noreturn, gnu::cold]] void impossible(const char* what);
+  [[noreturn]] void impossible(const char* what);
   bool yopenEdge1() { if( t(worm_n_)%4==3 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
   bool yopenEdge2() { if( t(worm_n_)%4==0 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
   bool yopenOddEdge1() { if( ( t(worm_n_)%4==1 && y(worm_n_)==Ny_-1 ) || ( t(worm_n_)%4==3 && y(worm_n_)==0 ) ) { return true; } else { return false; } }
@@ -515,356 +519,78 @@ void Lattice::set_plaq_origins() {
   }
 }
 
-void Lattice::decisionStructure(int *pl, double *pr, int s, int t, int d) { 
-  double myRan = ran();
-  if (plaq_==13 || plaq_==113) {
-     if (myRan < *(pr+24)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+24);
-     }
-    else if (myRan > *(pr+24) && myRan <= (*(pr+24)+*(pr+25))) {
-      spacelike();
-      pos_=s;
-      plaq_record_[Nplaq_]=*(pl+25);
-     }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-      }
-  }
-  else if (plaq_==14 || plaq_==114) {
-    if (myRan < *(pr+26)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+26);
-     }
-    else if (myRan > *(pr+26) && myRan <= (*(pr+26)+*(pr+27))) {
-      spacelike();
-      pos_=s;
-      plaq_record_[Nplaq_]=*(pl+27);
-     }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-      }
-  }
-  else if (plaq_==15 || plaq_==115) {
-     if (myRan < *(pr+28)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+28);
-     }
-    else if (myRan > *(pr+28) && myRan <= (*(pr+28)+*(pr+29))) {
-      spacelike();
-      pos_=s;
-      plaq_record_[Nplaq_]=*(pl+29);
-     }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-     }
-  }
-  else if (plaq_==7 || plaq_==107) {
-    if (myRan < *(pr+13)) {
-      spacelike();
-      pos_=s;
-      plaq_record_[Nplaq_]=*(pl+13);
-    }
-    else if (myRan > *(pr+13) && myRan <= (*(pr+13)+*(pr+12))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+12);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==8 || plaq_==108) {
-    if (myRan < *(pr+15)) {
-      spacelike();
-      pos_=s; 
-      plaq_record_[Nplaq_]=*(pl+15);
-    }
-    else if (myRan > *(pr+15) && myRan <= (*(pr+15)+*(pr+14))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+14);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==9 || plaq_==109) {
-    if (myRan < *(pr+17)) {
-      spacelike();
-      pos_=s; 
-      plaq_record_[Nplaq_]=*(pl+17);
-    }
-    else if (myRan > *(pr+17) && myRan <= (*(pr+17)+*(pr+16))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+16);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==10 || plaq_==110) {
-     if (myRan < *(pr+19)) {
-      spacelike();
-      pos_=s; 
-      plaq_record_[Nplaq_]=*(pl+19);
-    }
-    else if (myRan > *(pr+19) && myRan <= (*(pr+19)+*(pr+18))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+18);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==11 || plaq_==111) {
-    if (myRan < *(pr+21)) {
-      spacelike();
-      pos_=s; 
-      plaq_record_[Nplaq_]=*(pl+21);
-     }
-    else if (myRan > *(pr+21) && myRan <= (*(pr+21)+*(pr+20))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+20);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-     }
-  }
-  else if (plaq_==12 || plaq_==112) {
-    if (myRan < *(pr+23)) {
-      spacelike();
-      pos_=s; 
-      plaq_record_[Nplaq_]=*(pl+23);
-     }
-    else if (myRan > *(pr+23) && myRan <= (*(pr+23)+*(pr+22))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+22);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-      }
-  }
-  else if (plaq_==1 || plaq_==101) {
-   if (myRan < *(pr+1)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+1);
-    }
-    else if (myRan > *(pr+1) && myRan <= (*(pr+1) + *pr)) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*pl;
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==2 || plaq_==102) {
-   if (myRan < *(pr+3)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+3);
-    }
-    else if (myRan > *(pr+3) && myRan <= (*(pr+3) + *(pr+2))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+2);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==3 || plaq_==103) {
-   if (myRan < *(pr+5)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+5);
-    }
-    else if (myRan > *(pr+5) && myRan <= (*(pr+5) + *(pr+4))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+4);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==4 || plaq_==104) {
-      if (myRan < *(pr+7)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+7);
-    }
-    else if (myRan > *(pr+7) && myRan <= (*(pr+7)+*(pr+6))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+6);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==5 || plaq_==105) {
-   if (myRan < *(pr+9)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+9);
-    }
-    else if (myRan > *(pr+9) && myRan <= (*(pr+9)+*(pr+8))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+8);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==6 || plaq_==106) {
-    if (myRan < *(pr+11)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+11);
-    }
-    else if (myRan > *(pr+11) && myRan <= (*(pr+11)+*(pr+10))) {
-      diag();
-      pos_=d;
-      plaq_record_[Nplaq_]=*(pl+10);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else {
-    impossible("decisionStructure: plaquette is not 1-15 or 101-115");
-  }
-} 
+// The plaquette type 1-15 of a plaquette value (k on one sublattice, k + 100 on the other), or 0 if
+// the value is neither.
+static inline int plaquetteType(int plaq) {
+  if (plaq >= 1 && plaq <= 15) return plaq;
+  if (plaq >= 101 && plaq <= 115) return plaq - 100;
+  return 0;
+}
 
-void Lattice::decisionStructureYopen(int *pl, double *pr, int s, int t, int d) { 
+// For each plaquette type (closed boundaries): the two moves the worm can make across it, with the
+// offsets in the pattern arrays (pr: probability, pl: the plaquette value it leaves behind) of the
+// first and second move. Any other outcome is a bounce. Entry 0 is unused.
+struct PlaquetteMoves {
+  Move first, second;
+  int a, b;
+};
+constexpr PlaquetteMoves kPlaquetteMoves[16] = {
+  {},
+  {Move::time,  Move::diag,   1,  0}, {Move::time,  Move::diag,   3,  2}, {Move::time,  Move::diag,   5,  4},
+  {Move::time,  Move::diag,   7,  6}, {Move::time,  Move::diag,   9,  8}, {Move::time,  Move::diag,  11, 10},
+  {Move::space, Move::diag,  13, 12}, {Move::space, Move::diag,  15, 14}, {Move::space, Move::diag,  17, 16},
+  {Move::space, Move::diag,  19, 18}, {Move::space, Move::diag,  21, 20}, {Move::space, Move::diag,  23, 22},
+  {Move::time,  Move::space, 24, 25}, {Move::time,  Move::space, 26, 27}, {Move::time,  Move::space, 28, 29},
+};
+
+// At a y-open edge the only move is timelike: the offset of its entries for each plaquette type, or
+// -1 for the types that cannot occur there.
+constexpr int kYopenEdgeOffset[16] = {-1, 0, 1, 2, 3, 4, 5, -1, -1, -1, -1, -1, -1, 6, 7, 8};
+
+// Moves the worm head across the current plaquette and sets pos_ to the position it lands on
+// (s, t, d for a spacelike, timelike or diagonal move).
+inline void Lattice::makeMove(Move move, int s, int t, int d) {
+  switch (move) {
+    case Move::time:  timelike();  pos_=t; break;
+    case Move::space: spacelike(); pos_=s; break;
+    case Move::diag:  diag();      pos_=d; break;
+  }
+}
+
+// One step of the worm across the plaquette plaq_: the first move, the second move or a bounce,
+// with the probabilities pr and new plaquette values pl of the pattern for this plaquette type.
+void Lattice::decisionStructure(int *pl, double *pr, int s, int t, int d) {
   double myRan = ran();
-  if (plaq_==1 || plaq_==101) {
-    if (myRan < *pr) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*pl;
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
+  const int type = plaquetteType(plaq_);
+  if (type == 0) impossible("decisionStructure: plaquette is not 1-15 or 101-115");
+  const PlaquetteMoves& m = kPlaquetteMoves[type];
+  if (myRan < pr[m.a]) {
+    makeMove(m.first, s, t, d);
+    plaq_record_[Nplaq_]=pl[m.a];
   }
-  else if (plaq_==2 || plaq_==102) {
-    if (myRan < *(pr+1)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+1);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==3 || plaq_==103) {
-    if (myRan < *(pr+2)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+2);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==4 || plaq_==104) {
-    if (myRan < *(pr+3)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+3);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==5 || plaq_==105) {
-    if (myRan < *(pr+4)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+4);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    } 
-  }
-  else if (plaq_==6 || plaq_==106) {
-    if (myRan < *(pr+5)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+5);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==13 || plaq_==113) {
-    if (myRan < *(pr+6)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+6);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==14 || plaq_==114) {
-    if (myRan < *(pr+7)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+7);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
-  }
-  else if (plaq_==15 || plaq_==115) {
-    if (myRan < *(pr+8)) {
-      timelike();
-      pos_=t;
-      plaq_record_[Nplaq_]=*(pl+8);
-    }
-    else {
-      bounceTool();
-      t_dir_=-t_dir_;
-    }
+  else if (myRan > pr[m.a] && myRan <= (pr[m.a]+pr[m.b])) {
+    makeMove(m.second, s, t, d);
+    plaq_record_[Nplaq_]=pl[m.b];
   }
   else {
-    impossible("decisionStructureYopen: plaquette is not 1-6, 13-15, 101-106 or 113-115");
+    bounceTool();
+    t_dir_=-t_dir_;
+  }
+}
+
+// The same at a y-open edge, where the only move is timelike.
+void Lattice::decisionStructureYopen(int *pl, double *pr, int s, int t, int d) {
+  double myRan = ran();
+  const int a = kYopenEdgeOffset[plaquetteType(plaq_)];
+  if (a < 0) impossible("decisionStructureYopen: plaquette is not 1-6, 13-15, 101-106 or 113-115");
+  if (myRan < pr[a]) {
+    timelike();
+    pos_=t;
+    plaq_record_[Nplaq_]=pl[a];
+  }
+  else {
+    bounceTool();
+    t_dir_=-t_dir_;
   }
 }
 
