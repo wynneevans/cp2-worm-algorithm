@@ -17,10 +17,10 @@ using namespace std;
 static inline void loadbar(int x, int n, int w = 50)
 {
     if ( (x != n) && (x % (n/100+1) != 0) ) return;
-    
+
     float ratio  =  x/(float)n;
     int   c      =  ratio * w;
-    
+
     cout << setw(3) << (int)(ratio*100) << "% [";
     for (int x=0; x<c; x++) cout << "=";
     for (int x=c; x<w; x++) cout << " ";
@@ -28,10 +28,6 @@ static inline void loadbar(int x, int n, int w = 50)
     if (x == n) {
     cout << endl;
     }
-}
-
-template <typename T> int sgn(T val) {
-    return (T(0) < val) - (val < T(0));
 }
 
 inline int modulo(int a, int b) {
@@ -42,8 +38,338 @@ inline int modulo(int a, int b) {
 
 static double rvec[1];
 inline double ran() {ranlxd(rvec,1);return rvec[0];} //Generates random number between 0 and 1
-inline int ranspin() {ranlxd(rvec,1);return int(2*rvec[0]);} //Generates random number 0 or 1
-inline int ranint(int max) {ranlxd(rvec,1);return int(max*rvec[0]);} //Generates integer random number from 0 to max-1
+
+// The moves the worm head can make across a plaquette (see decisionStructure).
+enum class Move { time, space, diag };
+
+// The plaquette type 1-15 of a plaquette value (k on one sublattice, k + 100 on the other), or 0 if
+// the value is neither.
+static inline int plaquetteType(int plaq) {
+  if (plaq >= 1 && plaq <= 15) return plaq;
+  if (plaq >= 101 && plaq <= 115) return plaq - 100;
+  return 0;
+}
+
+// A worm's colour, also its index in the per-colour tables (kNone: no such move in kDiagColour).
+enum Colour : signed char { kU, kD, kS, kNone = -1 };
+
+// The tail a worm leaves when it starts, which fixes the winding it adds (w3xAdd_, w8xAdd_; see
+// positionTool).
+struct Tail {
+  const char* name;
+  int w3, w8;
+};
+
+class Lattice {
+  ofstream Mfile_, Cfile_;
+  string outDir_, BC_;
+
+  int Nx_, Ny_, Nt_, N_meas_, l_, lp_, lm_, plaq_, pos_, Nplaq_, worm_n_, worm_start_, xStart_, yStart_, tStart_, q3_, q8_;
+  int t_dir_, t_bob_, x_bob_, y_bob_, w3xAdd_, w8xAdd_;
+  Colour colour_ = kU;  // the worm's colour (setWormColour)
+
+  vector<int> xytp1_, xytm1_, plaq_record_, plaq_fwd_, plaq_bwd_, next_fwd_, next_bwd_, diag_fwd_, diag_bwd_;
+  std::array<double, kNumWeights> p_;  // the run's update weights p01 ... p48
+  vector<double> cXTt0tp1_, cXTtp1t0_, cXTt0tm1_, cXTtm1t0_, cXTu0up1_, cXTup1u0_, cXTu0um1_, cXTum1u0_, cXTv0vp1_, cXTv0vm1_, cXTvp1v0_, cXTvm1v0_, doubleNull_;
+
+  // Probability patterns of this run ([colour][parity][slot][entry], see kBulkWeight), and the
+  // current worm's patterns ([parity][slot][entry]), set with its colour by setWormColour.
+  double bulkProbAll_[3][2][4][30], edgeProbAll_[3][2][2][9];
+  const int (*bulkPlaq_)[4][30];
+  const double (*bulkProb_)[4][30];
+  const int (*edgePlaq_)[2][9];
+  const double (*edgeProb_)[2][9];
+  double *corr1, *corr2;
+  string tail_;
+
+
+public:
+  Lattice(string runDir, const string& tag, string BC, int N_meas, int Nx, int Ny, int Nt, const std::array<double,48>& p);
+  int volume() {return Nx_*Ny_*Nt_;}
+  int xyt(int x, int y, int t) { return x + y*Nx_ + t*Nx_*Ny_; }
+  int x(int i) { return i%Nx_; }
+  int y(int i) { return (i/Nx_)%Ny_; }
+  int t(int i) { return i/(Nx_*Ny_); }
+  void set_neighbours();
+  void set_plaq_origins();
+  void setPatts();
+  void set_AFM_groundstate();
+  void wormUpdate();
+  void wormUpdateYopen();
+  template <bool yOpen> void wormLoop();
+  template <bool yOpen, int dir, int pos> void wormStep();
+  void decisionStructure(const int *, const double *, int, int, int);
+  void decisionStructureYopen(const int *, const double *, int, int, int);
+  // The current worm's patterns for a plaquette of parity par (0 even, 1 odd) in a slot.
+  const int* bulkPlaq(int par, int slot) const { return bulkPlaq_[par][slot]; }
+  const double* bulkProb(int par, int slot) const { return bulkProb_[par][slot]; }
+  const int* edgePlaq(int par, int slot) const { return edgePlaq_[par][slot]; }
+  const double* edgeProb(int par, int slot) const { return edgeProb_[par][slot]; }
+  void setWormColour(Colour c);
+  void makeMove(Move, int, int, int);
+  void startWorm(Colour, const Tail&);
+  void measure();
+  void dirMove();
+  void positionTool(int, int, int, int);
+  void timelike();
+  void spacelike();
+  void diag();
+  void bounceTool();
+  void selectCorrelators();
+  void buildCorrelator(double*, double*);
+  [[noreturn]] void impossible(const char* what);
+  bool yopenEdge1() { if( t(worm_n_)%4==3 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
+  bool yopenEdge2() { if( t(worm_n_)%4==0 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
+  bool yopenOddEdge1() { if( ( t(worm_n_)%4==1 && y(worm_n_)==Ny_-1 ) || ( t(worm_n_)%4==3 && y(worm_n_)==0 ) ) { return true; } else { return false; } }
+  bool yopenOddEdge2() { if( ( t(worm_n_)%4==2 && y(worm_n_)==Ny_-1 ) || ( t(worm_n_)%4==0 && y(worm_n_)==0 ) ) { return true; } else { return false; } }
+
+
+  private:
+  typedef void (Lattice::*fptr)();
+  fptr runWorm;
+  typedef bool (Lattice::*bptr)();
+  bptr fwdEdge, bwdEdge;
+};
+
+// A state no correct simulation reaches: stop the run (its files are then not published).
+void Lattice::impossible(const char* what) {
+  throw AlgorithmError(std::format("algorithm reached an impossible state in {} (worm at x={}, y={}, t={}; "
+                                   "plaquette {}, pos {}, t_dir {}, worm length {})",
+                                   what, x(worm_n_), y(worm_n_), t(worm_n_), plaq_, pos_, t_dir_, l_));
+}
+
+// -------------------------------------------------------------------------------------------------
+// Setup: the lattice geometry, the starting configuration and the run's update patterns.
+
+Lattice::Lattice(string runDir, const string& tag, string BC, int N_meas, int Nx, int Ny, int Nt, const std::array<double,48>& pw) : outDir_(runDir), BC_(BC), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), q3_(0), q8_(0), p_(pw), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
+{
+  Mfile_.open(outDir_ + "/M_" + tag + ".dat", ios::out);
+  Cfile_.open(outDir_ + "/C_" + tag + ".dat", ios::out);
+  if (!Mfile_ || !Cfile_) throw InputError("cannot write the M_ and C_ files in '" + outDir_ + "'");
+
+  if(BC_=="y-open") {
+    cout << "y-open" << endl;
+    runWorm = &Lattice::wormUpdateYopen;
+    if(Ny_%2==1) {
+      cout << "odd" << endl;
+      fwdEdge = &Lattice::yopenOddEdge1;
+      bwdEdge = &Lattice::yopenOddEdge2;
+    }
+    else if(Ny_%2==0) {
+      cout << "even" << endl;
+      fwdEdge = &Lattice::yopenEdge1;
+      bwdEdge = &Lattice::yopenEdge2;
+    }
+    else { impossible("Lattice: Ly is neither even nor odd"); }
+  }
+  else if(BC_=="closed") {
+    cout << "closed" << endl;
+    runWorm = &Lattice::wormUpdate;
+  }
+  else { impossible("Lattice: boundary condition is neither closed nor y-open"); }
+
+
+ }
+
+void Lattice::set_neighbours() {
+    int n = 0;
+    for (int k = 0; k < Nt_; k++ ) {
+            for (int j = 0; j < Ny_; j++) {
+                for (int i = 0; i < Nx_; i++) {
+
+                  xytp1_[n] = xyt(i,j,(k+1)%Nt_);
+                  xytm1_[n] = xyt(i,j,(k-1+Nt_)%Nt_);
+
+                  n++;
+            }
+        }
+    }
+}
+
+void Lattice::set_plaq_origins() {
+  int n = 0;
+
+  for (int k = 0; k < Nt_; k++ ) {
+    for (int j = 0; j < Ny_; j++) {
+      for (int i = 0; i < Nx_; i++) {
+
+        if (k%4==3) {
+          if(Ny_%2==1) {
+            plaq_fwd_[n] = (i*(Ny_+1)/2) + (((j-1+Ny_)%Ny_)/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_) + ((k/4)*(2*Ny_+1)*Nx_);
+            plaq_bwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
+          }
+          else {
+            plaq_fwd_[n] = (i*Ny_/2) + (((j-1+Ny_)%Ny_)/2) + (k*Nx_*Ny_/2);
+            plaq_bwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2);
+          }
+
+          if (j%2==0) { next_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
+          if (j%2==1) { next_fwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
+          if (i%2==0) { next_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
+          if (i%2==1) { next_bwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
+          if (j%2==0) { diag_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k+1)%Nt_); }
+          if (j%2==1) { diag_fwd_[n] = xyt(i,(j+1)%Ny_,(k+1)%Nt_); }
+          if (i%2==0) { diag_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k-1+Nt_)%Nt_); }
+          if (i%2==1) { diag_bwd_[n] = xyt((i+1)%Nx_,j,(k-1+Nt_)%Nt_); }
+        }
+
+        if (k%4==2) {
+          if(Ny_%2==1) {
+            plaq_fwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_/2) + ((k/4)*(2*Ny_+1)*Nx_);
+            plaq_bwd_[n] = (i*(Ny_+1)/2) + (j/2) + (Ny_*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
+          }
+          else {
+            plaq_fwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + (k*Nx_*Ny_/2);
+            plaq_bwd_[n] = (i*Ny_/2) + (j/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2);
+          }
+          if (i%2==0) { next_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
+          if (i%2==1) { next_fwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
+          if (j%2==0) { next_bwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
+          if (j%2==1) { next_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
+          if (i%2==0) { diag_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k+1)%Nt_); }
+          if (i%2==1) { diag_fwd_[n] = xyt((i+1)%Nx_,j,(k+1)%Nt_); }
+          if (j%2==0) { diag_bwd_[n] = xyt(i,(j+1)%Ny_,(k-1+Nt_)%Nt_); }
+          if (j%2==1) { diag_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k-1+Nt_)%Nt_); }
+        }
+
+        if (k%4==1) {
+          if(Ny_%2==1) {
+            plaq_fwd_[n] = (i*(Ny_+1)/2) + (j/2) + (Ny_*Nx_/2) + ((k/4)*(2*Ny_+1)*Nx_);
+            plaq_bwd_[n] = (i/2) + (j*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
+          }
+          else {
+            plaq_fwd_[n] = (i*Ny_/2) + (j/2) + (k*Nx_*Ny_/2);
+            plaq_bwd_[n] = (i/2) + (j*Nx_/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2);
+          }
+          if (j%2==0) { next_fwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
+          if (j%2==1) { next_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
+          if (i%2==0) { next_bwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
+          if (i%2==1) { next_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
+          if (j%2==0) { diag_fwd_[n] = xyt(i,(j+1)%Ny_,(k+1)%Nt_); }
+          if (j%2==1) { diag_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k+1)%Nt_); }
+          if (i%2==0) { diag_bwd_[n] = xyt((i+1)%Nx_,j,(k-1+Nt_)%Nt_); }
+          if (i%2==1) { diag_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k-1+Nt_)%Nt_); }
+        }
+
+        if (k%4==0) {
+          if(Ny_%2==1) {
+            plaq_fwd_[n] = (i/2) + (j*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
+            plaq_bwd_[n] = (i*(Ny_+1)/2) + (((j-1+Ny_)%Ny_)/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_) + ((((k/4)-1+(Nt_/4))%(Nt_/4))*(2*Ny_+1)*Nx_);
+          }
+          else {
+            plaq_fwd_[n] = (i/2) + (j*Nx_/2) + (k*Nx_*Ny_/2);
+            plaq_bwd_[n] = (i*Ny_/2) + (((j-1+Ny_)%Ny_)/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2);
+          }
+          if (i%2==0) { next_fwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
+          if (i%2==1) { next_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
+          if (j%2==0) { next_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
+          if (j%2==1) { next_bwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
+          if (i%2==0) { diag_fwd_[n] = xyt((i+1)%Nx_,j,(k+1)%Nt_); }
+          if (i%2==1) { diag_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k+1)%Nt_); }
+          if (j%2==0) { diag_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k-1+Nt_)%Nt_); }
+          if (j%2==1) { diag_bwd_[n] = xyt(i,(j+1)%Ny_,(k-1+Nt_)%Nt_); }
+        }
+
+        n++;
+
+      }
+    }
+  }
+}
+
+void Lattice::set_AFM_groundstate() {
+
+  if(Ny_%2==0) {
+    for (int nPlaq=0; nPlaq < volume()/2; nPlaq++) {
+      int tSand,tSandBott,excess;
+      tSand = nPlaq/(2*Ny_*Nx_); // plaquette number / plaquettes in sandwich = sandwich number
+      tSandBott = (2*Ny_*Nx_)*tSand; // sandwich number * number of plaquettes in sandwich = start plaquette of sandwich
+      excess = nPlaq - tSandBott; // excess is number of plaquettes higher than start plaquette of sandwich
+      if(excess < (Nx_/2)*Ny_) {
+        if((excess/(Nx_/2))%2==0) {
+          plaq_record_[nPlaq]=13;
+        }
+        else {
+          plaq_record_[nPlaq]=113;
+        }
+      }
+      else if(excess < Nx_*Ny_) {
+        excess = excess - (Nx_/2)*Ny_;
+        if((excess/(Ny_/2))%2==0) {
+          plaq_record_[nPlaq]=13;
+        }
+        else {
+          plaq_record_[nPlaq]=113;
+        }
+      }
+      else if(excess < Nx_*Ny_ + (Ny_*Nx_/2)) {
+        excess = excess - Nx_*Ny_;
+        if((excess/(Nx_/2))%2==0) {
+          plaq_record_[nPlaq]=113;
+        }
+        else {
+          plaq_record_[nPlaq]=13;
+        }
+      }
+      else if(excess < 2*Nx_*Ny_)  {
+        excess = excess - Nx_*Ny_ + (Ny_*Nx_/2);
+        if((excess/(Ny_/2))%2==0) {
+          plaq_record_[nPlaq]=113;
+        }
+        else {
+          plaq_record_[nPlaq]=13;
+        }
+      }
+      else { impossible("set_AFM_groundstate: plaquette outside its time slice"); }
+    }
+
+
+  }
+  else {
+    for (int nPlaq=0; nPlaq < ((2*Ny_+1)*Nx_)*(Nt_/4); nPlaq++) {
+      int tSand,tSandBott,excess;
+      tSand = nPlaq/((2*Ny_+1)*Nx_); // plaquette number / plaquettes in sandwich = sandwich number
+      tSandBott = ((2*Ny_+1)*Nx_)*tSand; // sandwich number * number of plaquettes in sandwich = start plaquette of sandwich
+      excess = nPlaq - tSandBott; // excess is number of plaquettes higher than start plaquette of sandwich
+      if(excess < (Nx_/2)*Ny_) {
+        if((excess/(Nx_/2))%2==0) {
+          plaq_record_[nPlaq]=13;
+        }
+        else {
+          plaq_record_[nPlaq]=113;
+        }
+      }
+      else if(excess < (Nx_/2)*Ny_ + ((Ny_+1)*Nx_/2)) {
+        excess = excess - (Nx_/2)*Ny_;
+        if((excess/((Ny_+1)/2))%2==0) {
+          plaq_record_[nPlaq]=13;
+        }
+        else {
+          plaq_record_[nPlaq]=113;
+        }
+      }
+      else if(excess < Nx_*Ny_ + ((Ny_+1)*Nx_/2)) {
+        excess = excess - (Nx_/2)*Ny_ + ((Ny_+1)*Nx_/2);
+        if((excess/(Nx_/2))%2==0) {
+          plaq_record_[nPlaq]=113;
+        }
+        else {
+          plaq_record_[nPlaq]=13;
+        }
+      }
+      else if(excess < Nx_*Ny_ + (Ny_+1)*Nx_) {
+        excess = excess - Nx_*Ny_ + ((Ny_+1)*Nx_/2);
+        if((excess/((Ny_+1)/2))%2==0) {
+          plaq_record_[nPlaq]=113;
+        }
+        else {
+          plaq_record_[nPlaq]=13;
+        }
+      }
+      else { impossible("set_AFM_groundstate: plaquette outside its time slice"); }
+    }
+  }
+}
 
 // Update patterns. For each worm colour (u, d, s), sublattice parity of the plaquette (even, odd) and
 // slot (the plaquette's place in the time direction: 0-3 in the bulk; 02 and 13 at a y-open edge),
@@ -168,566 +494,29 @@ constexpr unsigned char kEdgeWeight[3][2][2][9] = {
   },
 };
 
-// The moves the worm head can make across a plaquette (see decisionStructure).
-enum class Move { time, space, diag };
-
-// The plaquette type 1-15 of a plaquette value (k on one sublattice, k + 100 on the other), or 0 if
-// the value is neither.
-static inline int plaquetteType(int plaq) {
-  if (plaq >= 1 && plaq <= 15) return plaq;
-  if (plaq >= 101 && plaq <= 115) return plaq - 100;
-  return 0;
-}
-
-// Colour indices in the colour tables below (kNone: no such move).
-constexpr signed char kU = 0, kD = 1, kS = 2, kNone = -1;
-
-// The colour a worm of colour u, d or s takes after a diagonal move forward (t_dir +1) or backward
-// across a plaquette of type 1-15 (entry 0 unused).
-constexpr signed char kDiagColour[2][3][16] = {
-  {  // forward    1      2      3      4      5      6      7      8      9     10     11     12  13-15
-    {kNone,    kD, kNone,    kS,    kD, kNone,    kS,    kD, kNone, kNone, kNone, kNone,    kS, kNone, kNone, kNone},  // u
-    {kNone,    kU,    kS, kNone,    kU,    kS, kNone, kNone, kNone, kNone,    kU,    kS, kNone, kNone, kNone, kNone},  // d
-    {kNone, kNone,    kD,    kU, kNone,    kD,    kU, kNone,    kD,    kU, kNone, kNone, kNone, kNone, kNone, kNone},  // s
-  },
-  {  // backward
-    {kNone,    kD, kNone,    kS,    kD, kNone,    kS, kNone, kNone,    kS,    kD, kNone, kNone, kNone, kNone, kNone},  // u
-    {kNone,    kU,    kS, kNone,    kU,    kS, kNone,    kU,    kS, kNone, kNone, kNone, kNone, kNone, kNone, kNone},  // d
-    {kNone, kNone,    kD,    kU, kNone,    kD,    kU, kNone, kNone, kNone, kNone,    kD,    kU, kNone, kNone, kNone},  // s
-  },
-};
-
-// The colour a worm takes when it bounces back from a plaquette of type 1-15, forward (t_dir +1) or
-// backward, in one of two groups of positions (kBounceGroup; only types 1-6 depend on the group).
-constexpr signed char kBounceColour[2][2][16] = {
-  {  // forward    1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
-    {kNone,       kU, kD, kS, kD, kS, kU, kD, kD, kU, kU, kS, kS, kU, kD, kS},
-    {kNone,       kD, kS, kU, kU, kD, kS, kD, kD, kU, kU, kS, kS, kU, kD, kS},
-  },
-  {  // backward
-    {kNone,       kU, kD, kS, kD, kS, kU, kU, kS, kS, kD, kD, kU, kU, kD, kS},
-    {kNone,       kD, kS, kU, kU, kD, kS, kU, kS, kS, kD, kD, kU, kU, kD, kS},
-  },
-};
-
-// The group in kBounceColour of each position 0-7, forward and backward.
-constexpr int kBounceGroup[2][8] = {
-  {0, 1, 0, 0, 0, 1, 1, 1},
-  {1, 1, 0, 1, 0, 0, 0, 1},
-};
-
-// The colour of a worm (setWormColorU/D/S), and the tail it leaves when it starts, which fixes the
-// winding it adds (w3xAdd_, w8xAdd_; see positionTool).
-enum class Colour { u, d, s };
-struct Tail {
-  const char* name;
-  int w3, w8;
-};
-
-class Lattice {
-  ofstream Mfile_, Cfile_;
-  string outDir_, BC_;
-
-  int Nx_, Ny_, Nt_, nTherm_, N_meas_, l_, lp_, lm_, plaq_, pos_, Nplaq_, worm_n_, worm_np1_, worm_start_, xStart_, yStart_, tStart_, startP_, startColor_, originalColor_, q3_, q8_;
-  int t_dir_, sim_, t_bob_, x_bob_, y_bob_, w3xAdd_, w8xAdd_;
-  int colour_ = 0;  // the worm's colour: 0 u, 1 d, 2 s (setWormColour)
- 
-  vector<int> xytp1_, xytm1_, plaq_record_, plaq_fwd_, plaq_bwd_, next_fwd_, next_bwd_, diag_fwd_, diag_bwd_, chiUp_, chiUm_, chiTp_, chiTm_, chiVp_, chiVm_;
-  double beta_, dt_, mu3_, mu8_;
-  std::array<double, kNumWeights> p_;  // the run's update weights p01 ... p48
-  vector<double> cXTt0tp1_, cXTtp1t0_, cXTt0tm1_, cXTtm1t0_, cXTu0up1_, cXTup1u0_, cXTu0um1_, cXTum1u0_, cXTv0vp1_, cXTv0vm1_, cXTvp1v0_, cXTvm1v0_, doubleNull_; 
-
-  // Probability patterns of this run ([colour][parity][slot][entry], see kBulkWeight), and the
-  // current worm's patterns ([parity][slot][entry]), set with its colour by setWormColorU/D/S.
-  double bulkProbAll_[3][2][4][30], edgeProbAll_[3][2][2][9];
-  const int (*bulkPlaq_)[4][30];
-  const double (*bulkProb_)[4][30];
-  const int (*edgePlaq_)[2][9];
-  const double (*edgeProb_)[2][9];
-  double *corr1, *corr2;
-  string tail_;
-
-    
-public:
-  Lattice(string runDir, const string& tag, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& p, int sim);
-  int volume() {return Nx_*Ny_*Nt_;}
-  int xyt(int x, int y, int t) { return x + y*Nx_ + t*Nx_*Ny_; }
-  int x(int i) { return i%Nx_; }
-  int y(int i) { return (i/Nx_)%Ny_; }
-  int t(int i) { return i/(Nx_*Ny_); }
-  void set_neighbours();
-  void set_plaq_origins();
-  void setPatts();
-  void check();
-  void set_AFM_groundstate();
-  void wormUpdate();
-  void wormUpdateYopen();
-  template <bool yOpen> void wormLoop();
-  template <bool yOpen, int dir, int pos> void wormStep();
-  void decisionStructure(const int *, const double *, int, int, int);
-  void decisionStructureYopen(const int *, const double *, int, int, int);
-  // The current worm's patterns for a plaquette of parity par (0 even, 1 odd) in a slot.
-  const int* bulkPlaq(int par, int slot) const { return bulkPlaq_[par][slot]; }
-  const double* bulkProb(int par, int slot) const { return bulkProb_[par][slot]; }
-  const int* edgePlaq(int par, int slot) const { return edgePlaq_[par][slot]; }
-  const double* edgeProb(int par, int slot) const { return edgeProb_[par][slot]; }
-  void setWormColour(int c);
-  void makeMove(Move, int, int, int);
-  void startWorm(Colour, const Tail&);  
-  void measure();
-  void dirMove();
-  void positionTool(int, int, int, int);
-  void timelike();
-  void spacelike();
-  void diag();
-  void setWormColorU();
-  void setWormColorD();
-  void setWormColorS();
-  void bounceTool();
-  void selectCorrelators();
-  void buildCorrelator(double*, double*);
-  [[noreturn]] void impossible(const char* what);
-  bool yopenEdge1() { if( t(worm_n_)%4==3 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
-  bool yopenEdge2() { if( t(worm_n_)%4==0 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
-  bool yopenOddEdge1() { if( ( t(worm_n_)%4==1 && y(worm_n_)==Ny_-1 ) || ( t(worm_n_)%4==3 && y(worm_n_)==0 ) ) { return true; } else { return false; } }
-  bool yopenOddEdge2() { if( ( t(worm_n_)%4==2 && y(worm_n_)==Ny_-1 ) || ( t(worm_n_)%4==0 && y(worm_n_)==0 ) ) { return true; } else { return false; } }
-  
-
-  private:
-  typedef void (Lattice::*fptr)();
-  fptr runWorm;
-  typedef bool (Lattice::*bptr)();
-  bptr fwdEdge, bwdEdge;
-};
-
- 
-// A state no correct simulation reaches: stop the run (its files are then not published).
-void Lattice::impossible(const char* what) {
-  throw AlgorithmError(std::format("algorithm reached an impossible state in {} (worm at x={}, y={}, t={}; "
-                                   "plaquette {}, pos {}, t_dir {}, worm length {})",
-                                   what, x(worm_n_), y(worm_n_), t(worm_n_), plaq_, pos_, t_dir_, l_));
-}
-
-Lattice::Lattice(string runDir, const string& tag, string BC, int N_meas, double beta, int Nx, int Ny, int Nt, double mu3, double mu8, const std::array<double,48>& pw, int sim) : outDir_(runDir), BC_(BC), beta_(beta), Nx_(Nx), Ny_(Ny), Nt_(Nt), N_meas_(N_meas), l_(0), lp_(0), lm_(0), plaq_(0), pos_(0), Nplaq_(0), worm_n_(0), worm_np1_(0), worm_start_(0), xStart_(0), yStart_(0), tStart_(0), startP_(0), startColor_(0), originalColor_(0), t_dir_(1), xytp1_(Nx_*Ny_*Nt_), xytm1_(Nx_*Ny_*Nt_), plaq_record_(Nx_*(Ny_+1)*Nt_/2), plaq_fwd_(Nx_*Ny_*Nt_), plaq_bwd_(Nx_*Ny_*Nt_), next_fwd_(Nx_*Ny_*Nt_), next_bwd_(Nx_*Ny_*Nt_), diag_fwd_(Nx_*Ny_*Nt_), diag_bwd_(Nx_*Ny_*Nt_), dt_(4*beta_/Nt_), q3_(0), q8_(0), mu3_(mu3), mu8_(mu8), p_(pw), sim_(sim), cXTt0tp1_(Nx_*Nt_/4), cXTtp1t0_(Nx_*Nt_/4), cXTt0tm1_(Nx_*Nt_/4), cXTtm1t0_(Nx_*Nt_/4), cXTu0up1_(Nx_*Nt_/4), cXTup1u0_(Nx_*Nt_/4), cXTu0um1_(Nx_*Nt_/4), cXTum1u0_(Nx_*Nt_/4), cXTv0vp1_(Nx_*Nt_/4), cXTvp1v0_(Nx_*Nt_/4), cXTv0vm1_(Nx_*Nt_/4), cXTvm1v0_(Nx_*Nt_/4), doubleNull_(Nx_*Nt_/4), t_bob_(0), x_bob_(0), y_bob_(0), tail_("empty"), w3xAdd_(0), w8xAdd_(0)
-{	
-  Mfile_.open(outDir_ + "/M_" + tag + ".dat", ios::out);
-  Cfile_.open(outDir_ + "/C_" + tag + ".dat", ios::out);
-  if (!Mfile_ || !Cfile_) throw InputError("cannot write the M_ and C_ files in '" + outDir_ + "'");
-
-  if(BC_=="y-open") {
-    cout << "y-open" << endl;
-    runWorm = &Lattice::wormUpdateYopen;
-    if(Ny_%2==1) {
-      cout << "odd" << endl;
-      fwdEdge = &Lattice::yopenOddEdge1;
-      bwdEdge = &Lattice::yopenOddEdge2;
-    }
-    else if(Ny_%2==0) {
-      cout << "even" << endl;
-      fwdEdge = &Lattice::yopenEdge1;
-      bwdEdge = &Lattice::yopenEdge2;
-    }
-    else { impossible("Lattice: Ly is neither even nor odd"); }
-  }
-  else if(BC_=="closed") {
-    cout << "closed" << endl;
-    runWorm = &Lattice::wormUpdate;
-  }
-  else { impossible("Lattice: boundary condition is neither closed nor y-open"); }
-
-  
- }
-
-void Lattice::set_neighbours() {
-    int n = 0;
-    for (int k = 0; k < Nt_; k++ ) {
-            for (int j = 0; j < Ny_; j++) {
-                for (int i = 0; i < Nx_; i++) {
-	
-		  xytp1_[n] = xyt(i,j,(k+1)%Nt_);
-		  xytm1_[n] = xyt(i,j,(k-1+Nt_)%Nt_);
-                  
-		  n++;
-            }
-        }
+// Fills the probability patterns from the run's weights (kBulkWeight, kEdgeWeight).
+void Lattice::setPatts() {
+  auto weight = [&](int k) { return k == 0 ? 0.0 : k == kOne ? 1.0 : p_[k - 1]; };
+  for (int c = 0; c < 3; c++)
+    for (int par = 0; par < 2; par++) {
+      for (int slot = 0; slot < 4; slot++)
+        for (int i = 0; i < 30; i++) bulkProbAll_[c][par][slot][i] = weight(kBulkWeight[c][par][slot][i]);
+      for (int slot = 0; slot < 2; slot++)
+        for (int i = 0; i < 9; i++) edgeProbAll_[c][par][slot][i] = weight(kEdgeWeight[c][par][slot][i]);
     }
 }
 
-void Lattice::set_AFM_groundstate() {
- 
-  if(Ny_%2==0) {
-    for (int nPlaq=0; nPlaq < volume()/2; nPlaq++) {
-      int n,x,y,t,tSand,tSandBott,excess;
-      tSand = nPlaq/(2*Ny_*Nx_); // plaquette number / plaquettes in sandwich = sandwich number
-      tSandBott = (2*Ny_*Nx_)*tSand; // sandwich number * number of plaquettes in sandwich = start plaquette of sandwich
-      excess = nPlaq - tSandBott; // excess is number of plaquettes higher than start plaquette of sandwich
-      if(excess < (Nx_/2)*Ny_) {
-	if((excess/(Nx_/2))%2==0) {
-	  plaq_record_[nPlaq]=13;
-	}
-	else {
-	  plaq_record_[nPlaq]=113;
-	}
-      }
-      else if(excess < Nx_*Ny_) {
-	excess = excess - (Nx_/2)*Ny_;
-	if((excess/(Ny_/2))%2==0) {
-	  plaq_record_[nPlaq]=13;
-	}
-	else {
-	  plaq_record_[nPlaq]=113;
-	}
-      }
-      else if(excess < Nx_*Ny_ + (Ny_*Nx_/2)) {
-	excess = excess - Nx_*Ny_;
-	if((excess/(Nx_/2))%2==0) {
-	  plaq_record_[nPlaq]=113;
-	}
-	else {
-	  plaq_record_[nPlaq]=13;
-	}	
-      }
-      else if(excess < 2*Nx_*Ny_)  {
-	excess = excess - Nx_*Ny_ + (Ny_*Nx_/2);
-	if((excess/(Ny_/2))%2==0) {
-	  plaq_record_[nPlaq]=113;
-	}
-	else {
-	  plaq_record_[nPlaq]=13;
-	}	
-      }
-      else { impossible("set_AFM_groundstate: plaquette outside its time slice"); }
-    }
-
-
-  }
-  else {
-    for (int nPlaq=0; nPlaq < ((2*Ny_+1)*Nx_)*(Nt_/4); nPlaq++) {
-      int n,x,y,t,tSand,tSandBott,excess;
-      tSand = nPlaq/((2*Ny_+1)*Nx_); // plaquette number / plaquettes in sandwich = sandwich number
-      tSandBott = ((2*Ny_+1)*Nx_)*tSand; // sandwich number * number of plaquettes in sandwich = start plaquette of sandwich
-      excess = nPlaq - tSandBott; // excess is number of plaquettes higher than start plaquette of sandwich
-      if(excess < (Nx_/2)*Ny_) {
-	if((excess/(Nx_/2))%2==0) {
-	  plaq_record_[nPlaq]=13;
-	}
-	else {
-	  plaq_record_[nPlaq]=113;
-	}
-      }
-      else if(excess < (Nx_/2)*Ny_ + ((Ny_+1)*Nx_/2)) {
-	excess = excess - (Nx_/2)*Ny_;
-	if((excess/((Ny_+1)/2))%2==0) {
-	  plaq_record_[nPlaq]=13;
-	}
-	else {
-	  plaq_record_[nPlaq]=113;
-	}
-      }
-      else if(excess < Nx_*Ny_ + ((Ny_+1)*Nx_/2)) {
-	excess = excess - (Nx_/2)*Ny_ + ((Ny_+1)*Nx_/2);
-	if((excess/(Nx_/2))%2==0) {
-	  plaq_record_[nPlaq]=113;
-	}
-	else {
-	  plaq_record_[nPlaq]=13;
-	}	
-      }
-      else if(excess < Nx_*Ny_ + (Ny_+1)*Nx_) {
-	excess = excess - Nx_*Ny_ + ((Ny_+1)*Nx_/2);
-	if((excess/((Ny_+1)/2))%2==0) {
-	  plaq_record_[nPlaq]=113;
-	}
-	else {
-	  plaq_record_[nPlaq]=13;
-	}	
-      }
-      else { impossible("set_AFM_groundstate: plaquette outside its time slice"); }
-    }
-  }
+// Sets the worm's colour and points its patterns at those of that colour.
+void Lattice::setWormColour(Colour c) {
+  colour_ = c;
+  bulkPlaq_ = kBulkPlaq[c];
+  bulkProb_ = bulkProbAll_[c];
+  edgePlaq_ = kEdgePlaq[c];
+  edgeProb_ = edgeProbAll_[c];
 }
 
-void Lattice::check() {
-  cout << endl;
-  for (int n = 0; n < volume(); n++) {
-    printf("n: %d, plaq_fwd_[n]: %d, plaq_bwd_[n]: %d, plaq_record_[plaq_fwd_[n]]: %d, plaq_record_[plaq_bwd_[n]]: %d.\n", n, plaq_fwd_[n], plaq_bwd_[n], plaq_record_[plaq_fwd_[n]], plaq_record_[plaq_bwd_[n]]) ; 
-  }
-}
-
-// Moves the worm head diagonally across the plaquette plaq_, changing its colour (kDiagColour).
-void Lattice::diag() {
-  dirMove();
-  int dir;
-  if (t_dir_==1) {
-    worm_n_ = diag_fwd_[worm_n_];
-    t_bob_++;
-    dir = 0;
-  }
-  else if (t_dir_==-1) {
-    worm_n_ = diag_bwd_[worm_n_];
-    t_bob_--;
-    dir = 1;
-  }
-  else {
-    impossible("diag: t_dir is not +1 or -1");
-  }
-  const int c = kDiagColour[dir][colour_][plaquetteType(plaq_)];
-  if (c < 0) impossible("diag: no diagonal move across this plaquette for this colour");
-  setWormColour(c);
-}
-
-void Lattice::timelike() {
-  if (t_dir_==1) {
-     worm_n_ = xytp1_[worm_n_];
-     t_bob_++;
-  }
-  else if (t_dir_==-1) {
-    worm_n_ = xytm1_[worm_n_];
-    t_bob_--;
-  }
-  else {
-    impossible("timelike: t_dir is not +1 or -1");
-  }
-}
-
-void Lattice::spacelike() {
-  dirMove();
-  if (t_dir_==1) {
-    worm_n_ = next_fwd_[worm_n_];
-  }
-  else if (t_dir_==-1) {
-    worm_n_ = next_bwd_[worm_n_];
-  }
-  else {
-    impossible("spacelike: t_dir is not +1 or -1");
-  }
-  t_dir_=-t_dir_;
-}
-
-void Lattice::dirMove() {
-  
-  int xcoord = x(worm_n_);
-  int ycoord = y(worm_n_);
-  int tcoord = t(worm_n_);
-
-  if (t_dir_==1) {
-    if (tcoord%4==3) {
-      if (ycoord%2==0) { y_bob_--; }
-      else if (ycoord%2==1) { y_bob_++; }
-      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
-    }
-    else if (tcoord%4==2) {
-      if (xcoord%2==0) { x_bob_--; }
-      else if (xcoord%2==1) { x_bob_++; }
-      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
-    }
-    else if (tcoord%4==1) {       
-      if (ycoord%2==0) { y_bob_++; }
-      else if (ycoord%2==1) { y_bob_--; } 
-      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
-    }
-    else if (tcoord%4==0) {
-      if (xcoord%2==0) { x_bob_++; }
-      else if (xcoord%2==1) { x_bob_--; }
-      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
-    }
-    else {
-      impossible("dirMove (forward): t mod 4 is not 0-3");
-    }   
-  }
-  else {
-    if (tcoord%4==3) {
-      if (xcoord%2==0) { x_bob_--; }
-      else if (xcoord%2==1) { x_bob_++; }
-      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
-    }
-    else if (tcoord%4==2) {
-      if (ycoord%2==0) { y_bob_++; }
-      else if (ycoord%2==1) { y_bob_--; } 
-      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
-    }
-    else if (tcoord%4==1) {       
-      if (xcoord%2==0) { x_bob_++; }
-      else if (xcoord%2==1) { x_bob_--; }
-      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
-    }
-    else if (tcoord%4==0) {
-      if (ycoord%2==0) { y_bob_--; }
-      else if (ycoord%2==1) { y_bob_++; }
-      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
-    }
-    else {
-      impossible("dirMove (backward): t mod 4 is not 0-3");
-    }   
-  }
-}
-
-
-
-void Lattice::set_plaq_origins() {
-  int n = 0;
-    
-  for (int k = 0; k < Nt_; k++ ) {
-    for (int j = 0; j < Ny_; j++) {
-      for (int i = 0; i < Nx_; i++) {
-                
-	if (k%4==3) {
-	  if(Ny_%2==1) {
-	    plaq_fwd_[n] = (i*(Ny_+1)/2) + (((j-1+Ny_)%Ny_)/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_) + ((k/4)*(2*Ny_+1)*Nx_);
-	    plaq_bwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
-	  }
-	  else {
-	    plaq_fwd_[n] = (i*Ny_/2) + (((j-1+Ny_)%Ny_)/2) + (k*Nx_*Ny_/2); 
-	    plaq_bwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2); 
-	  }
-		
-	  if (j%2==0) { next_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
-	  if (j%2==1) { next_fwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
-	  if (i%2==0) { next_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
-	  if (i%2==1) { next_bwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
-	  if (j%2==0) { diag_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k+1)%Nt_); }
-	  if (j%2==1) { diag_fwd_[n] = xyt(i,(j+1)%Ny_,(k+1)%Nt_); }
-	  if (i%2==0) { diag_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k-1+Nt_)%Nt_); }
-	  if (i%2==1) { diag_bwd_[n] = xyt((i+1)%Nx_,j,(k-1+Nt_)%Nt_); }		
-	}
-                
-	if (k%4==2) {
-	  if(Ny_%2==1) {
-	    plaq_fwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_/2) + ((k/4)*(2*Ny_+1)*Nx_);
-	    plaq_bwd_[n] = (i*(Ny_+1)/2) + (j/2) + (Ny_*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
-	  }
-	  else {
-	    plaq_fwd_[n] = (((i-1+Nx_)%Nx_)/2) + (j*Nx_/2) + (k*Nx_*Ny_/2);
-	    plaq_bwd_[n] = (i*Ny_/2) + (j/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2);
-	  }
-	  if (i%2==0) { next_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
-	  if (i%2==1) { next_fwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
-	  if (j%2==0) { next_bwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
-	  if (j%2==1) { next_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
-	  if (i%2==0) { diag_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k+1)%Nt_); }
-	  if (i%2==1) { diag_fwd_[n] = xyt((i+1)%Nx_,j,(k+1)%Nt_); }
-	  if (j%2==0) { diag_bwd_[n] = xyt(i,(j+1)%Ny_,(k-1+Nt_)%Nt_); }
-	  if (j%2==1) { diag_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k-1+Nt_)%Nt_); }
-	}
-	      
-	if (k%4==1) {
-	  if(Ny_%2==1) {
-	    plaq_fwd_[n] = (i*(Ny_+1)/2) + (j/2) + (Ny_*Nx_/2) + ((k/4)*(2*Ny_+1)*Nx_);
-	    plaq_bwd_[n] = (i/2) + (j*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
-	  }
-	  else {
-	    plaq_fwd_[n] = (i*Ny_/2) + (j/2) + (k*Nx_*Ny_/2);
-	    plaq_bwd_[n] = (i/2) + (j*Nx_/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2);
-	  }
-	  if (j%2==0) { next_fwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
-	  if (j%2==1) { next_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
-	  if (i%2==0) { next_bwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
-	  if (i%2==1) { next_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
-	  if (j%2==0) { diag_fwd_[n] = xyt(i,(j+1)%Ny_,(k+1)%Nt_); }
-	  if (j%2==1) { diag_fwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k+1)%Nt_); }
-	  if (i%2==0) { diag_bwd_[n] = xyt((i+1)%Nx_,j,(k-1+Nt_)%Nt_); }
-	  if (i%2==1) { diag_bwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k-1+Nt_)%Nt_); }
-	}
-
-	if (k%4==0) {
-	  if(Ny_%2==1) {
-	    plaq_fwd_[n] = (i/2) + (j*Nx_/2) + (k/4)*(2*Ny_+1)*Nx_;
-	    plaq_bwd_[n] = (i*(Ny_+1)/2) + (((j-1+Ny_)%Ny_)/2) + ((Ny_+1)*Nx_/2) + (Ny_*Nx_) + ((((k/4)-1+(Nt_/4))%(Nt_/4))*(2*Ny_+1)*Nx_);
-	  }
-	  else {
-	    plaq_fwd_[n] = (i/2) + (j*Nx_/2) + (k*Nx_*Ny_/2);
-	    plaq_bwd_[n] = (i*Ny_/2) + (((j-1+Ny_)%Ny_)/2) + (((k-1+Nt_)%Nt_)*Nx_*Ny_/2);
-	  }
-	  if (i%2==0) { next_fwd_[n] = xyt((i+1)%Nx_,j,k); } //xp1yt_[n]
-	  if (i%2==1) { next_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,k); }
-	  if (j%2==0) { next_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,k); }
-	  if (j%2==1) { next_bwd_[n] = xyt(i,(j+1)%Ny_,k); } //xyp1t_[n]
-	  if (i%2==0) { diag_fwd_[n] = xyt((i+1)%Nx_,j,(k+1)%Nt_); }
-	  if (i%2==1) { diag_fwd_[n] = xyt((i-1+Nx_)%Nx_,j,(k+1)%Nt_); }
-	  if (j%2==0) { diag_bwd_[n] = xyt(i,(j-1+Ny_)%Ny_,(k-1+Nt_)%Nt_); }
-	  if (j%2==1) { diag_bwd_[n] = xyt(i,(j+1)%Ny_,(k-1+Nt_)%Nt_); }
-	}
-		
-	n++;
-                
-      }
-    }
-  }
-}
-
-// For each plaquette type (closed boundaries): the two moves the worm can make across it, with the
-// offsets in the pattern arrays (pr: probability, pl: the plaquette value it leaves behind) of the
-// first and second move. Any other outcome is a bounce. Entry 0 is unused.
-struct PlaquetteMoves {
-  Move first, second;
-  int a, b;
-};
-constexpr PlaquetteMoves kPlaquetteMoves[16] = {
-  {},
-  {Move::time,  Move::diag,   1,  0}, {Move::time,  Move::diag,   3,  2}, {Move::time,  Move::diag,   5,  4},
-  {Move::time,  Move::diag,   7,  6}, {Move::time,  Move::diag,   9,  8}, {Move::time,  Move::diag,  11, 10},
-  {Move::space, Move::diag,  13, 12}, {Move::space, Move::diag,  15, 14}, {Move::space, Move::diag,  17, 16},
-  {Move::space, Move::diag,  19, 18}, {Move::space, Move::diag,  21, 20}, {Move::space, Move::diag,  23, 22},
-  {Move::time,  Move::space, 24, 25}, {Move::time,  Move::space, 26, 27}, {Move::time,  Move::space, 28, 29},
-};
-
-// At a y-open edge the only move is timelike: the offset of its entries for each plaquette type, or
-// -1 for the types that cannot occur there.
-constexpr int kYopenEdgeOffset[16] = {-1, 0, 1, 2, 3, 4, 5, -1, -1, -1, -1, -1, -1, 6, 7, 8};
-
-// Moves the worm head across the current plaquette and sets pos_ to the position it lands on
-// (s, t, d for a spacelike, timelike or diagonal move).
-inline void Lattice::makeMove(Move move, int s, int t, int d) {
-  switch (move) {
-    case Move::time:  timelike();  pos_=t; break;
-    case Move::space: spacelike(); pos_=s; break;
-    case Move::diag:  diag();      pos_=d; break;
-  }
-}
-
-// One step of the worm across the plaquette plaq_: the first move, the second move or a bounce,
-// with the probabilities pr and new plaquette values pl of the pattern for this plaquette type.
-void Lattice::decisionStructure(const int *pl, const double *pr, int s, int t, int d) {
-  double myRan = ran();
-  const int type = plaquetteType(plaq_);
-  if (type == 0) impossible("decisionStructure: plaquette is not 1-15 or 101-115");
-  const PlaquetteMoves& m = kPlaquetteMoves[type];
-  if (myRan < pr[m.a]) {
-    makeMove(m.first, s, t, d);
-    plaq_record_[Nplaq_]=pl[m.a];
-  }
-  else if (myRan > pr[m.a] && myRan <= (pr[m.a]+pr[m.b])) {
-    makeMove(m.second, s, t, d);
-    plaq_record_[Nplaq_]=pl[m.b];
-  }
-  else {
-    bounceTool();
-    t_dir_=-t_dir_;
-  }
-}
-
-// The same at a y-open edge, where the only move is timelike.
-void Lattice::decisionStructureYopen(const int *pl, const double *pr, int s, int t, int d) {
-  double myRan = ran();
-  const int a = kYopenEdgeOffset[plaquetteType(plaq_)];
-  if (a < 0) impossible("decisionStructureYopen: plaquette is not 1-6, 13-15, 101-106 or 113-115");
-  if (myRan < pr[a]) {
-    timelike();
-    pos_=t;
-    plaq_record_[Nplaq_]=pl[a];
-  }
-  else {
-    bounceTool();
-    t_dir_=-t_dir_;
-  }
-}
-
-// The worm bounces back from the plaquette plaq_ and takes the colour kBounceColour gives it.
-// plaq_ was checked by decisionStructure(Yopen), t_dir_ (+1 or -1) and pos_ (0-7) by wormLoop.
-void Lattice::bounceTool() {
-  const int dir = t_dir_==1 ? 0 : 1;
-  setWormColour(kBounceColour[dir][kBounceGroup[dir][pos_]][plaquetteType(plaq_)]);
-}
+// -------------------------------------------------------------------------------------------------
+// Starting a worm.
 
 // The tails a worm can start with, and the winding each adds.
 constexpr Tail kTp{"tp", 2, 0}, kTm{"tm", -2, 0}, kVp{"vp", 1, 1}, kVm{"vm", -1, -1}, kUp{"up", -1, 1},
@@ -740,11 +529,10 @@ constexpr unsigned types(std::initializer_list<int> list) {
   return mask;
 }
 
-// Start plaquette types that start a worm the same way: originalColor_, and the two equally likely
-// starts (colour and tail).
+// Start plaquette types that start a worm the same way: the two equally likely starts (colour and
+// tail).
 struct StartGroup {
   unsigned types;
-  int originalColor;
   Colour colour1;
   Tail tail1;
   Colour colour2;
@@ -761,36 +549,36 @@ struct StartCase {
 };
 
 constexpr StartCase kStartCases[8] = {
-  {1, false, 0, 2, {{types({1, 6, 9, 10, 13}),  1,   Colour::d, kTm, Colour::s, kVm},
-                    {types({2, 4, 7, 8, 14}),   -1,  Colour::s, kUm, Colour::u, kTp},
-                    {types({3, 5, 11, 12, 15}), 0,   Colour::u, kVp, Colour::d, kUp}}},
-  {1, false, 1, 6, {{types({3, 4, 9, 10, 13}),  11,  Colour::d, kTp, Colour::s, kVp},
-                    {types({1, 5, 7, 8, 14}),   -11, Colour::s, kUp, Colour::u, kTm},
-                    {types({2, 6, 11, 12, 15}), 10,  Colour::u, kVm, Colour::d, kUm}}},
-  {1, true,  3, 4, {{types({1, 6, 9, 10, 13}),  11,  Colour::d, kTp, Colour::s, kVp},
-                    {types({2, 4, 7, 8, 14}),   -11, Colour::s, kUp, Colour::u, kTm},
-                    {types({3, 5, 11, 12, 15}), 10,  Colour::u, kVm, Colour::d, kUm}}},
-  {1, true,  5, 7, {{types({3, 4, 9, 10, 13}),  1,   Colour::d, kTm, Colour::s, kVm},
-                    {types({1, 5, 7, 8, 14}),   -1,  Colour::s, kUm, Colour::u, kTp},
-                    {types({2, 6, 11, 12, 15}), 0,   Colour::u, kVp, Colour::d, kUp}}},
-  {-1, false, 2, 5, {{types({1, 6, 7, 12, 13}),  1,   Colour::d, kTp, Colour::s, kVp},
-                     {types({2, 4, 10, 11, 14}), -1,  Colour::s, kUp, Colour::u, kTm},
-                     {types({3, 5, 8, 9, 15}),   0,   Colour::u, kVm, Colour::d, kUm}}},
-  {-1, false, 1, 3, {{types({3, 4, 7, 12, 13}),  11,  Colour::d, kTm, Colour::s, kVm},
-                     {types({1, 5, 10, 11, 14}), -11, Colour::s, kUm, Colour::u, kTp},
-                     {types({2, 6, 8, 9, 15}),   10,  Colour::u, kVp, Colour::d, kUp}}},
-  {-1, true,  4, 6, {{types({1, 6, 7, 12, 13}),  11,  Colour::d, kTm, Colour::s, kVm},
-                     {types({2, 4, 10, 11, 14}), -11, Colour::s, kUm, Colour::u, kTp},
-                     {types({3, 5, 8, 9, 15}),   10,  Colour::u, kVp, Colour::d, kUp}}},
-  {-1, true,  0, 7, {{types({3, 4, 7, 12, 13}),  1,   Colour::d, kTp, Colour::s, kVp},
-                     {types({1, 5, 10, 11, 14}), -1,  Colour::s, kUp, Colour::u, kTm},
-                     {types({2, 6, 8, 9, 15}),   0,   Colour::u, kVm, Colour::d, kUm}}},
+  {1, false, 0, 2, {{types({1, 6, 9, 10, 13}),  kD, kTm, kS, kVm},
+                    {types({2, 4, 7, 8, 14}),   kS, kUm, kU, kTp},
+                    {types({3, 5, 11, 12, 15}), kU, kVp, kD, kUp}}},
+  {1, false, 1, 6, {{types({3, 4, 9, 10, 13}),  kD, kTp, kS, kVp},
+                    {types({1, 5, 7, 8, 14}),   kS, kUp, kU, kTm},
+                    {types({2, 6, 11, 12, 15}), kU, kVm, kD, kUm}}},
+  {1, true,  3, 4, {{types({1, 6, 9, 10, 13}),  kD, kTp, kS, kVp},
+                    {types({2, 4, 7, 8, 14}),   kS, kUp, kU, kTm},
+                    {types({3, 5, 11, 12, 15}), kU, kVm, kD, kUm}}},
+  {1, true,  5, 7, {{types({3, 4, 9, 10, 13}),  kD, kTm, kS, kVm},
+                    {types({1, 5, 7, 8, 14}),   kS, kUm, kU, kTp},
+                    {types({2, 6, 11, 12, 15}), kU, kVp, kD, kUp}}},
+  {-1, false, 2, 5, {{types({1, 6, 7, 12, 13}),  kD, kTp, kS, kVp},
+                     {types({2, 4, 10, 11, 14}), kS, kUp, kU, kTm},
+                     {types({3, 5, 8, 9, 15}),   kU, kVm, kD, kUm}}},
+  {-1, false, 1, 3, {{types({3, 4, 7, 12, 13}),  kD, kTm, kS, kVm},
+                     {types({1, 5, 10, 11, 14}), kS, kUm, kU, kTp},
+                     {types({2, 6, 8, 9, 15}),   kU, kVp, kD, kUp}}},
+  {-1, true,  4, 6, {{types({1, 6, 7, 12, 13}),  kD, kTm, kS, kVm},
+                     {types({2, 4, 10, 11, 14}), kS, kUm, kU, kTp},
+                     {types({3, 5, 8, 9, 15}),   kU, kVp, kD, kUp}}},
+  {-1, true,  0, 7, {{types({3, 4, 7, 12, 13}),  kD, kTp, kS, kVp},
+                     {types({1, 5, 10, 11, 14}), kS, kUp, kU, kTm},
+                     {types({2, 6, 8, 9, 15}),   kU, kVm, kD, kUm}}},
 };
 
 // Sets pos_ from the parity of the worm's start site, then chooses the worm's colour and tail from
 // the plaquette it starts on (kStartCases).
 void Lattice::positionTool(int a, int b, int c, int d) {
-  if (y(worm_n_)%2==0) { 
+  if (y(worm_n_)%2==0) {
     if (x(worm_n_)%2==0) {
       pos_=a;
     }
@@ -801,19 +589,19 @@ void Lattice::positionTool(int a, int b, int c, int d) {
         impossible("positionTool: x or y is neither even nor odd");
     }
   }
-  else if (y(worm_n_)%2==1) { 
+  else if (y(worm_n_)%2==1) {
     if (x(worm_n_)%2==0) {
-      pos_=c; 
+      pos_=c;
     }
-    else if (x(worm_n_)%2==1) { 
+    else if (x(worm_n_)%2==1) {
       pos_=d;
     }
     else {
       impossible("positionTool: x or y is neither even nor odd");
-    } 
+    }
   }
   else { impossible("positionTool: x or y is neither even nor odd"); }
- 
+
   if (t_dir_ != 1 && t_dir_ != -1) impossible("positionTool: t_dir is not +1 or -1");
   const int startPlaq = plaq_record_[t_dir_==1 ? plaq_fwd_[worm_n_] : plaq_bwd_[worm_n_]];
   if (startPlaq == 100) impossible("positionTool: start plaquette is 100");
@@ -826,7 +614,6 @@ void Lattice::positionTool(int a, int b, int c, int d) {
   const int type = plaquetteType(startPlaq);
   for (const StartGroup& g : start->groups) {
     if (!((g.types >> type) & 1u)) continue;
-    originalColor_ = g.originalColor;
     if (ran() < 0.5) startWorm(g.colour1, g.tail1);
     else startWorm(g.colour2, g.tail2);
     return;
@@ -836,41 +623,14 @@ void Lattice::positionTool(int a, int b, int c, int d) {
 
 // Gives the new worm its colour and tail.
 void Lattice::startWorm(Colour colour, const Tail& tail) {
-  switch (colour) {
-    case Colour::u: setWormColorU(); break;
-    case Colour::d: setWormColorD(); break;
-    case Colour::s: setWormColorS(); break;
-  }
+  setWormColour(colour);
   tail_ = tail.name;
   w3xAdd_ = tail.w3;
   w8xAdd_ = tail.w8;
 }
 
-// Sets the worm's colour c (0 u, 1 d, 2 s) and points its patterns at those of that colour.
-void Lattice::setWormColour(int c) {
-  colour_ = c;
-  bulkPlaq_ = kBulkPlaq[c];
-  bulkProb_ = bulkProbAll_[c];
-  edgePlaq_ = kEdgePlaq[c];
-  edgeProb_ = edgeProbAll_[c];
-}
-
-void Lattice::setWormColorU() { setWormColour(kU); }
-void Lattice::setWormColorD() { setWormColour(kD); }
-void Lattice::setWormColorS() { setWormColour(kS); }
-
-// Fills the probability patterns from the run's weights (kBulkWeight, kEdgeWeight).
-void Lattice::setPatts() {
-  auto weight = [&](int k) { return k == 0 ? 0.0 : k == kOne ? 1.0 : p_[k - 1]; };
-  for (int c = 0; c < 3; c++)
-    for (int par = 0; par < 2; par++) {
-      for (int slot = 0; slot < 4; slot++)
-        for (int i = 0; i < 30; i++) bulkProbAll_[c][par][slot][i] = weight(kBulkWeight[c][par][slot][i]);
-      for (int slot = 0; slot < 2; slot++)
-        for (int i = 0; i < 9; i++) edgeProbAll_[c][par][slot][i] = weight(kEdgeWeight[c][par][slot][i]);
-    }
-}
-
+// -------------------------------------------------------------------------------------------------
+// The worm update: one step after another until the head is back at the tail.
 
 // One step of the worm for each direction (0 forward, t_dir_ = +1; 1 backward) and position pos_:
 // the patterns to use (parity of the plaquette, 0 even or 1 odd, and its bulk slot; at a y-open edge
@@ -960,7 +720,227 @@ void Lattice::wormUpdate() { wormLoop<false>(); }
 
 void Lattice::wormUpdateYopen() { wormLoop<true>(); }
 
+// For each plaquette type (closed boundaries): the two moves the worm can make across it, with the
+// offsets in the pattern arrays (pr: probability, pl: the plaquette value it leaves behind) of the
+// first and second move. Any other outcome is a bounce. Entry 0 is unused.
+struct PlaquetteMoves {
+  Move first, second;
+  int a, b;
+};
+constexpr PlaquetteMoves kPlaquetteMoves[16] = {
+  {},
+  {Move::time,  Move::diag,   1,  0}, {Move::time,  Move::diag,   3,  2}, {Move::time,  Move::diag,   5,  4},
+  {Move::time,  Move::diag,   7,  6}, {Move::time,  Move::diag,   9,  8}, {Move::time,  Move::diag,  11, 10},
+  {Move::space, Move::diag,  13, 12}, {Move::space, Move::diag,  15, 14}, {Move::space, Move::diag,  17, 16},
+  {Move::space, Move::diag,  19, 18}, {Move::space, Move::diag,  21, 20}, {Move::space, Move::diag,  23, 22},
+  {Move::time,  Move::space, 24, 25}, {Move::time,  Move::space, 26, 27}, {Move::time,  Move::space, 28, 29},
+};
 
+// At a y-open edge the only move is timelike: the offset of its entries for each plaquette type, or
+// -1 for the types that cannot occur there.
+constexpr int kYopenEdgeOffset[16] = {-1, 0, 1, 2, 3, 4, 5, -1, -1, -1, -1, -1, -1, 6, 7, 8};
+
+// Moves the worm head across the current plaquette and sets pos_ to the position it lands on
+// (s, t, d for a spacelike, timelike or diagonal move).
+inline void Lattice::makeMove(Move move, int s, int t, int d) {
+  switch (move) {
+    case Move::time:  timelike();  pos_=t; break;
+    case Move::space: spacelike(); pos_=s; break;
+    case Move::diag:  diag();      pos_=d; break;
+  }
+}
+
+// One step of the worm across the plaquette plaq_: the first move, the second move or a bounce,
+// with the probabilities pr and new plaquette values pl of the pattern for this plaquette type.
+void Lattice::decisionStructure(const int *pl, const double *pr, int s, int t, int d) {
+  double myRan = ran();
+  const int type = plaquetteType(plaq_);
+  if (type == 0) impossible("decisionStructure: plaquette is not 1-15 or 101-115");
+  const PlaquetteMoves& m = kPlaquetteMoves[type];
+  if (myRan < pr[m.a]) {
+    makeMove(m.first, s, t, d);
+    plaq_record_[Nplaq_]=pl[m.a];
+  }
+  else if (myRan > pr[m.a] && myRan <= (pr[m.a]+pr[m.b])) {
+    makeMove(m.second, s, t, d);
+    plaq_record_[Nplaq_]=pl[m.b];
+  }
+  else {
+    bounceTool();
+    t_dir_=-t_dir_;
+  }
+}
+
+// The same at a y-open edge, where the only move is timelike.
+void Lattice::decisionStructureYopen(const int *pl, const double *pr, int s, int t, int d) {
+  double myRan = ran();
+  const int a = kYopenEdgeOffset[plaquetteType(plaq_)];
+  if (a < 0) impossible("decisionStructureYopen: plaquette is not 1-6, 13-15, 101-106 or 113-115");
+  if (myRan < pr[a]) {
+    timelike();
+    pos_=t;
+    plaq_record_[Nplaq_]=pl[a];
+  }
+  else {
+    bounceTool();
+    t_dir_=-t_dir_;
+  }
+}
+
+// -------------------------------------------------------------------------------------------------
+// The moves of the worm head, and the colour it takes.
+
+void Lattice::timelike() {
+  if (t_dir_==1) {
+     worm_n_ = xytp1_[worm_n_];
+     t_bob_++;
+  }
+  else if (t_dir_==-1) {
+    worm_n_ = xytm1_[worm_n_];
+    t_bob_--;
+  }
+  else {
+    impossible("timelike: t_dir is not +1 or -1");
+  }
+}
+
+void Lattice::spacelike() {
+  dirMove();
+  if (t_dir_==1) {
+    worm_n_ = next_fwd_[worm_n_];
+  }
+  else if (t_dir_==-1) {
+    worm_n_ = next_bwd_[worm_n_];
+  }
+  else {
+    impossible("spacelike: t_dir is not +1 or -1");
+  }
+  t_dir_=-t_dir_;
+}
+
+// The colour a worm of colour u, d or s takes after a diagonal move forward (t_dir +1) or backward
+// across a plaquette of type 1-15 (entry 0 unused).
+constexpr Colour kDiagColour[2][3][16] = {
+  {  // forward    1      2      3      4      5      6      7      8      9     10     11     12  13-15
+    {kNone,    kD, kNone,    kS,    kD, kNone,    kS,    kD, kNone, kNone, kNone, kNone,    kS, kNone, kNone, kNone},  // u
+    {kNone,    kU,    kS, kNone,    kU,    kS, kNone, kNone, kNone, kNone,    kU,    kS, kNone, kNone, kNone, kNone},  // d
+    {kNone, kNone,    kD,    kU, kNone,    kD,    kU, kNone,    kD,    kU, kNone, kNone, kNone, kNone, kNone, kNone},  // s
+  },
+  {  // backward
+    {kNone,    kD, kNone,    kS,    kD, kNone,    kS, kNone, kNone,    kS,    kD, kNone, kNone, kNone, kNone, kNone},  // u
+    {kNone,    kU,    kS, kNone,    kU,    kS, kNone,    kU,    kS, kNone, kNone, kNone, kNone, kNone, kNone, kNone},  // d
+    {kNone, kNone,    kD,    kU, kNone,    kD,    kU, kNone, kNone, kNone, kNone,    kD,    kU, kNone, kNone, kNone},  // s
+  },
+};
+
+// Moves the worm head diagonally across the plaquette plaq_, changing its colour (kDiagColour).
+void Lattice::diag() {
+  dirMove();
+  int dir;
+  if (t_dir_==1) {
+    worm_n_ = diag_fwd_[worm_n_];
+    t_bob_++;
+    dir = 0;
+  }
+  else if (t_dir_==-1) {
+    worm_n_ = diag_bwd_[worm_n_];
+    t_bob_--;
+    dir = 1;
+  }
+  else {
+    impossible("diag: t_dir is not +1 or -1");
+  }
+  const Colour c = kDiagColour[dir][colour_][plaquetteType(plaq_)];
+  if (c == kNone) impossible("diag: no diagonal move across this plaquette for this colour");
+  setWormColour(c);
+}
+
+void Lattice::dirMove() {
+
+  int xcoord = x(worm_n_);
+  int ycoord = y(worm_n_);
+  int tcoord = t(worm_n_);
+
+  if (t_dir_==1) {
+    if (tcoord%4==3) {
+      if (ycoord%2==0) { y_bob_--; }
+      else if (ycoord%2==1) { y_bob_++; }
+      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
+    }
+    else if (tcoord%4==2) {
+      if (xcoord%2==0) { x_bob_--; }
+      else if (xcoord%2==1) { x_bob_++; }
+      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
+    }
+    else if (tcoord%4==1) {
+      if (ycoord%2==0) { y_bob_++; }
+      else if (ycoord%2==1) { y_bob_--; }
+      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
+    }
+    else if (tcoord%4==0) {
+      if (xcoord%2==0) { x_bob_++; }
+      else if (xcoord%2==1) { x_bob_--; }
+      else { impossible("dirMove (forward): coordinate is neither even nor odd"); }
+    }
+    else {
+      impossible("dirMove (forward): t mod 4 is not 0-3");
+    }
+  }
+  else {
+    if (tcoord%4==3) {
+      if (xcoord%2==0) { x_bob_--; }
+      else if (xcoord%2==1) { x_bob_++; }
+      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
+    }
+    else if (tcoord%4==2) {
+      if (ycoord%2==0) { y_bob_++; }
+      else if (ycoord%2==1) { y_bob_--; }
+      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
+    }
+    else if (tcoord%4==1) {
+      if (xcoord%2==0) { x_bob_++; }
+      else if (xcoord%2==1) { x_bob_--; }
+      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
+    }
+    else if (tcoord%4==0) {
+      if (ycoord%2==0) { y_bob_--; }
+      else if (ycoord%2==1) { y_bob_++; }
+      else { impossible("dirMove (backward): coordinate is neither even nor odd"); }
+    }
+    else {
+      impossible("dirMove (backward): t mod 4 is not 0-3");
+    }
+  }
+}
+
+// The colour a worm takes when it bounces back from a plaquette of type 1-15, forward (t_dir +1) or
+// backward, in one of two groups of positions (kBounceGroup; only types 1-6 depend on the group).
+constexpr Colour kBounceColour[2][2][16] = {
+  {  // forward    1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
+    {kNone,       kU, kD, kS, kD, kS, kU, kD, kD, kU, kU, kS, kS, kU, kD, kS},
+    {kNone,       kD, kS, kU, kU, kD, kS, kD, kD, kU, kU, kS, kS, kU, kD, kS},
+  },
+  {  // backward
+    {kNone,       kU, kD, kS, kD, kS, kU, kU, kS, kS, kD, kD, kU, kU, kD, kS},
+    {kNone,       kD, kS, kU, kU, kD, kS, kU, kS, kS, kD, kD, kU, kU, kD, kS},
+  },
+};
+
+// The group in kBounceColour of each position 0-7, forward and backward.
+constexpr int kBounceGroup[2][8] = {
+  {0, 1, 0, 0, 0, 1, 1, 1},
+  {1, 1, 0, 1, 0, 0, 0, 1},
+};
+
+// The worm bounces back from the plaquette plaq_ and takes the colour kBounceColour gives it.
+// plaq_ was checked by decisionStructure(Yopen), t_dir_ (+1 or -1) and pos_ (0-7) by wormLoop.
+void Lattice::bounceTool() {
+  const int dir = t_dir_==1 ? 0 : 1;
+  setWormColour(kBounceColour[dir][kBounceGroup[dir][pos_]][plaquetteType(plaq_)]);
+}
+
+// -------------------------------------------------------------------------------------------------
+// Correlators and measurements.
 
 void Lattice::buildCorrelator(double *gram1, double *gram2) {
   if(t_bob_<Nt_ && t_bob_>-Nt_) {
@@ -968,7 +948,7 @@ void Lattice::buildCorrelator(double *gram1, double *gram2) {
     int nT = t(worm_n_);
 
     int cX = modulo(nX-xStart_,Nx_);
-    int cT;  
+    int cT;
 
     if(t_bob_>=0) {
       cT = modulo(nT-tStart_,Nt_)/4;
@@ -985,116 +965,116 @@ void Lattice::selectCorrelators() {
   if (q8_==0) {
     if(strcmp(tail_.c_str(),"tp")==0) {
       if(q3_==0) {
-	corr1=&cXTt0tp1_[0];
-	corr2=&cXTt0tm1_[0];	 
+        corr1=&cXTt0tp1_[0];
+        corr2=&cXTt0tm1_[0];
       }
       else if(q3_==2) {
-	corr1=&doubleNull_[0];
-	corr2=&cXTtp1t0_[0];
+        corr1=&doubleNull_[0];
+        corr2=&cXTtp1t0_[0];
       }
       else if(q3_==-2) {
-	corr1=&cXTtm1t0_[0];
-	corr2=&doubleNull_[0];
+        corr1=&cXTtm1t0_[0];
+        corr2=&doubleNull_[0];
       }
     }
     else if(strcmp(tail_.c_str(),"tm")==0) {
       if(q3_==0) {
-	corr1=&cXTt0tm1_[0];
-	corr2=&cXTt0tp1_[0];
+        corr1=&cXTt0tm1_[0];
+        corr2=&cXTt0tp1_[0];
       }
       else if(q3_==2) {
-	corr1=&cXTtp1t0_[0];
-	corr2=&doubleNull_[0];
+        corr1=&cXTtp1t0_[0];
+        corr2=&doubleNull_[0];
       }
       else if(q3_==-2) {
-	corr1=&doubleNull_[0];
-	corr2=&cXTtm1t0_[0];	 
+        corr1=&doubleNull_[0];
+        corr2=&cXTtm1t0_[0];
       }
     }
   }
   if(q8_<2 && q8_>-2) {
     if(strcmp(tail_.c_str(),"up")==0) {
       if(q3_==0) {
-	corr1=&cXTu0up1_[0];
-	corr2=&cXTu0um1_[0];	
+        corr1=&cXTu0up1_[0];
+        corr2=&cXTu0um1_[0];
       }
       else if(q3_==-1) {
-	corr1=&doubleNull_[0];
-	corr2=&cXTup1u0_[0];	 
+        corr1=&doubleNull_[0];
+        corr2=&cXTup1u0_[0];
       }
       else if(q3_==1) {
-	corr1=&cXTum1u0_[0];
-	corr2=&doubleNull_[0];
+        corr1=&cXTum1u0_[0];
+        corr2=&doubleNull_[0];
       }
     }
     else if(strcmp(tail_.c_str(),"um")==0) {
       if(q3_==0) {
-	corr1=&cXTu0um1_[0];
-	corr2=&cXTu0up1_[0];	
+        corr1=&cXTu0um1_[0];
+        corr2=&cXTu0up1_[0];
       }
       else if(q3_==-1) {
-	corr1=&cXTup1u0_[0];
-	corr2=&doubleNull_[0];
+        corr1=&cXTup1u0_[0];
+        corr2=&doubleNull_[0];
       }
       else if(q3_==1) {
-	corr1=&doubleNull_[0];
-	corr2=&cXTum1u0_[0];	
+        corr1=&doubleNull_[0];
+        corr2=&cXTum1u0_[0];
       }
     }
     else if(strcmp(tail_.c_str(),"vp")==0) {
-      if(q3_==0) {	
-	corr1=&cXTv0vp1_[0];	 
-	corr2=&cXTv0vm1_[0];	
+      if(q3_==0) {
+        corr1=&cXTv0vp1_[0];
+        corr2=&cXTv0vm1_[0];
       }
       else if(q3_==1) {
-	corr1=&doubleNull_[0];
-	corr2=&cXTvp1v0_[0];	 
+        corr1=&doubleNull_[0];
+        corr2=&cXTvp1v0_[0];
       }
       else if(q3_==-1) {
-	corr1=&cXTvm1v0_[0];
-	corr2=&doubleNull_[0];
+        corr1=&cXTvm1v0_[0];
+        corr2=&doubleNull_[0];
       }
     }
     else if(strcmp(tail_.c_str(),"vm")==0) {
       if(q3_==0) {
-	corr1=&cXTv0vm1_[0];	 
-	corr2=&cXTv0vp1_[0];	
+        corr1=&cXTv0vm1_[0];
+        corr2=&cXTv0vp1_[0];
       }
       else if(q3_==1) {
-	corr1=&cXTvp1v0_[0];
-	corr2=&doubleNull_[0];
+        corr1=&cXTvp1v0_[0];
+        corr2=&doubleNull_[0];
       }
       else if(q3_==-1) {
-	corr1=&doubleNull_[0];	
-	corr2=&cXTvm1v0_[0];	 
+        corr1=&doubleNull_[0];
+        corr2=&cXTvm1v0_[0];
       }
     }
-  } 
+  }
 }
 
 
 void Lattice::measure() {
   cout << "Measuring..." << endl;
-  
+
   int wX = 0, wY = 0, wT = 0, w3x = 0, w8x = 0, w3y = 0, w8y = 0;
   double valt0tp1, valt0tm1, valu0up1, valu0um1, valv0vp1, valv0vm1;
-  double valtp1t0, valtm1t0, valup1u0, valum1u0, valvp1v0, valvm1v0; 
-  
+  double valtp1t0, valtm1t0, valup1u0, valum1u0, valvp1v0, valvm1v0;
+
   for (int i = 1; i <= N_meas_; i++) {
-    loadbar(i, N_meas_); 
-    
+    loadbar(i, N_meas_);
+
     t_bob_ = 0; x_bob_ = 0; y_bob_ = 0; l_ = 0, lp_ = 0, lm_ = 0;
     worm_start_= ran()*volume();
     xStart_=x(worm_start_); yStart_=y(worm_start_); tStart_=t(worm_start_);
     worm_n_ = worm_start_;
-  
+
     if (t(worm_n_)%4==3) {
       positionTool(7,6,3,2);
     }
     else if (t(worm_n_)%4==2) {
       positionTool(5,4,1,0);
     }
-    else if (t(worm_n_)%4==1) {   
+    else if (t(worm_n_)%4==1) {
       positionTool(2,3,6,7);
     }
     else if (t(worm_n_)%4==0) {
@@ -1108,7 +1088,7 @@ void Lattice::measure() {
 
     (this->*runWorm)(); //  worm update;
 
-    wX = x_bob_/Nx_;	
+    wX = x_bob_/Nx_;
     wY = y_bob_/Ny_;
     wT = t_bob_/Nt_;
 
@@ -1118,42 +1098,42 @@ void Lattice::measure() {
     w3y += wY*w3xAdd_;
     w8y += wY*w8xAdd_;
 
-    q3_ += wT*w3xAdd_; 
+    q3_ += wT*w3xAdd_;
     q8_ += wT*w8xAdd_;
-    
-    Mfile_ << std::format("{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15}\n", w3x, w8x, w3y, w8y, q3_, q8_, l_, lp_, lm_, tail_);   
-    
+
+    Mfile_ << std::format("{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15},{:<15}\n", w3x, w8x, w3y, w8y, q3_, q8_, l_, lp_, lm_, tail_);
+
     if (i%(N_meas_/20) == 0) {
-     
+
       for (unsigned int k = 0; k < Nt_/4; k++) {
-      	for (unsigned int j = 0; j < Nx_; j++) {	    
-           
-      	  valt0tp1 = cXTt0tp1_[j + (k*Nx_)];
-      	  valt0tm1 = cXTt0tm1_[j + (k*Nx_)];
-      	  valtp1t0 = cXTtp1t0_[j + (k*Nx_)];
-      	  valtm1t0 = cXTtm1t0_[j + (k*Nx_)];
-      	  
-      	  valu0up1 = cXTu0up1_[j + (k*Nx_)];
-      	  valu0um1 = cXTu0um1_[j + (k*Nx_)];
-      	  valup1u0 = cXTup1u0_[j + (k*Nx_)];
-      	  valum1u0 = cXTum1u0_[j + (k*Nx_)];
+        for (unsigned int j = 0; j < Nx_; j++) {
 
-      	  valv0vp1 = cXTv0vp1_[j + (k*Nx_)];
-      	  valv0vm1 = cXTv0vm1_[j + (k*Nx_)];
-      	  valvp1v0 = cXTvp1v0_[j + (k*Nx_)];
-      	  valvm1v0 = cXTvm1v0_[j + (k*Nx_)];
-      	  
-      	  Cfile_ << std::format("{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g}\n", valt0tp1, valt0tm1, valtp1t0, valtm1t0, valu0up1, valu0um1, valup1u0, valum1u0, valv0vp1, valv0vm1, valvp1v0, valvm1v0); 
+          valt0tp1 = cXTt0tp1_[j + (k*Nx_)];
+          valt0tm1 = cXTt0tm1_[j + (k*Nx_)];
+          valtp1t0 = cXTtp1t0_[j + (k*Nx_)];
+          valtm1t0 = cXTtm1t0_[j + (k*Nx_)];
 
-      	}
+          valu0up1 = cXTu0up1_[j + (k*Nx_)];
+          valu0um1 = cXTu0um1_[j + (k*Nx_)];
+          valup1u0 = cXTup1u0_[j + (k*Nx_)];
+          valum1u0 = cXTum1u0_[j + (k*Nx_)];
+
+          valv0vp1 = cXTv0vp1_[j + (k*Nx_)];
+          valv0vm1 = cXTv0vm1_[j + (k*Nx_)];
+          valvp1v0 = cXTvp1v0_[j + (k*Nx_)];
+          valvm1v0 = cXTvm1v0_[j + (k*Nx_)];
+
+          Cfile_ << std::format("{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g},{:<20.15g}\n", valt0tp1, valt0tm1, valtp1t0, valtm1t0, valu0up1, valu0um1, valup1u0, valum1u0, valv0vp1, valv0vm1, valvp1v0, valvm1v0);
+
+        }
       }
 
-      
+
       fill(cXTt0tp1_.begin(), cXTt0tp1_.end(), 0);
       fill(cXTt0tm1_.begin(), cXTt0tm1_.end(), 0);
       fill(cXTtp1t0_.begin(), cXTtp1t0_.end(), 0);
       fill(cXTtm1t0_.begin(), cXTtm1t0_.end(), 0);
-   
+
       fill(cXTu0up1_.begin(), cXTu0up1_.end(), 0);
       fill(cXTu0um1_.begin(), cXTu0um1_.end(), 0);
       fill(cXTup1u0_.begin(), cXTup1u0_.end(), 0);
@@ -1169,7 +1149,7 @@ void Lattice::measure() {
 
   }
 
-    
+
 
 Mfile_.close();
 Cfile_.close();
@@ -1179,7 +1159,7 @@ Cfile_.close();
 void simulate(const RunConfig& run, const std::array<double, kNumWeights>& p, const std::string& dir,
               const std::string& tag) {
   rlxd_init(2, static_cast<int>(*run.seed));
-  Lattice system(dir, tag, run.bc, run.measurements, run.beta, run.Lx, run.Ly, run.Lt, run.mu3, run.mu8, p, 1);
+  Lattice system(dir, tag, run.bc, run.measurements, run.Lx, run.Ly, run.Lt, p);
   system.set_neighbours();
   system.set_plaq_origins();
   system.set_AFM_groundstate();
