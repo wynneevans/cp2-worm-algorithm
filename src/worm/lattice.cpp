@@ -36,8 +36,18 @@ inline int modulo(int a, int b) {
 }
 
 
-static double rvec[1];
-inline double ran() {ranlxd(rvec,1);return rvec[0];} //Generates random number between 0 and 1
+// Random numbers in [0,1) from ranlxd, fetched in blocks (the same sequence as one at a time).
+// simulate() empties the block when it seeds ranlxd, so no run uses another run's numbers.
+constexpr int kRanBlock = 96;
+static double ranBlock[kRanBlock];
+static int ranNext = kRanBlock;
+inline double ran() {
+  if (ranNext == kRanBlock) {
+    ranlxd(ranBlock, kRanBlock);
+    ranNext = 0;
+  }
+  return ranBlock[ranNext++];
+}
 
 // The moves the worm head can make across a plaquette (see decisionStructure).
 enum class Move { time, space, diag };
@@ -52,6 +62,9 @@ static inline int plaquetteType(int plaq) {
 
 // A worm's colour, also its index in the per-colour tables (kNone: no such move in kDiagColour).
 enum Colour : signed char { kU, kD, kS, kNone = -1 };
+
+// The y-open edge flags of a site (Lattice::edge_).
+constexpr unsigned char kFwdEdge = 1, kBwdEdge = 2;
 
 // The tail a worm leaves when it starts, which fixes the winding it adds (w3xAdd_, w8xAdd_; see
 // positionTool).
@@ -69,6 +82,7 @@ class Lattice {
   Colour colour_ = kU;  // the worm's colour (setWormColour)
 
   vector<int> xytp1_, xytm1_, plaq_record_, plaq_fwd_, plaq_bwd_, next_fwd_, next_bwd_, diag_fwd_, diag_bwd_;
+  vector<unsigned char> edge_;  // y-open only: kFwdEdge, kBwdEdge for each site (set_edges)
   std::array<double, kNumWeights> p_;  // the run's update weights p01 ... p48
   vector<double> cXTt0tp1_, cXTtp1t0_, cXTt0tm1_, cXTtm1t0_, cXTu0up1_, cXTup1u0_, cXTu0um1_, cXTum1u0_, cXTv0vp1_, cXTv0vm1_, cXTvp1v0_, cXTvm1v0_, doubleNull_;
 
@@ -91,6 +105,7 @@ public:
   int y(int i) { return (i/Nx_)%Ny_; }
   int t(int i) { return i/(Nx_*Ny_); }
   void set_neighbours();
+  void set_edges();
   void set_plaq_origins();
   void setPatts();
   void set_AFM_groundstate();
@@ -118,17 +133,17 @@ public:
   void selectCorrelators();
   void buildCorrelator(double*, double*);
   [[noreturn]] void impossible(const char* what);
-  bool yopenEdge1() { if( t(worm_n_)%4==3 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
-  bool yopenEdge2() { if( t(worm_n_)%4==0 && ( y(worm_n_)==Ny_-1 || y(worm_n_)==0 ) ) { return true; } else { return false; } }
-  bool yopenOddEdge1() { if( ( t(worm_n_)%4==1 && y(worm_n_)==Ny_-1 ) || ( t(worm_n_)%4==3 && y(worm_n_)==0 ) ) { return true; } else { return false; } }
-  bool yopenOddEdge2() { if( ( t(worm_n_)%4==2 && y(worm_n_)==Ny_-1 ) || ( t(worm_n_)%4==0 && y(worm_n_)==0 ) ) { return true; } else { return false; } }
+  // Whether a forward (1) or backward (2) step from a site at (y, t) is at a y-open edge, for even
+  // and odd Ly.
+  bool yopenEdge1(int y, int t) const { return t%4==3 && (y==Ny_-1 || y==0); }
+  bool yopenEdge2(int y, int t) const { return t%4==0 && (y==Ny_-1 || y==0); }
+  bool yopenOddEdge1(int y, int t) const { return (t%4==1 && y==Ny_-1) || (t%4==3 && y==0); }
+  bool yopenOddEdge2(int y, int t) const { return (t%4==2 && y==Ny_-1) || (t%4==0 && y==0); }
 
 
   private:
   typedef void (Lattice::*fptr)();
   fptr runWorm;
-  typedef bool (Lattice::*bptr)();
-  bptr fwdEdge, bwdEdge;
 };
 
 // A state no correct simulation reaches: stop the run (its files are then not published).
@@ -152,13 +167,9 @@ Lattice::Lattice(string runDir, const string& tag, string BC, int N_meas, int Nx
     runWorm = &Lattice::wormUpdateYopen;
     if(Ny_%2==1) {
       cout << "odd" << endl;
-      fwdEdge = &Lattice::yopenOddEdge1;
-      bwdEdge = &Lattice::yopenOddEdge2;
     }
     else if(Ny_%2==0) {
       cout << "even" << endl;
-      fwdEdge = &Lattice::yopenEdge1;
-      bwdEdge = &Lattice::yopenEdge2;
     }
     else { impossible("Lattice: Ly is neither even nor odd"); }
   }
@@ -184,6 +195,20 @@ void Lattice::set_neighbours() {
             }
         }
     }
+}
+
+// The y-open edge flags of each site: whether a step forward (kFwdEdge) or backward (kBwdEdge) from
+// it is at a y-open edge.
+void Lattice::set_edges() {
+  if (BC_ != "y-open") return;
+  const bool odd = Ny_%2==1;
+  edge_.assign(volume(), 0);
+  for (int n = 0; n < volume(); n++) {
+    const int yn = y(n), tn = t(n);
+    const bool fwd = odd ? yopenOddEdge1(yn, tn) : yopenEdge1(yn, tn);
+    const bool bwd = odd ? yopenOddEdge2(yn, tn) : yopenEdge2(yn, tn);
+    edge_[n] = (fwd ? kFwdEdge : 0) | (bwd ? kBwdEdge : 0);
+  }
 }
 
 void Lattice::set_plaq_origins() {
@@ -645,12 +670,12 @@ constexpr Step kSteps[2][8] = {
 };
 
 // One step of the worm in direction dir from position pos (kSteps). With yOpen, a step at a y-open
-// edge (fwdEdge, bwdEdge) uses the edge patterns.
+// edge (edge_) uses the edge patterns.
 template <bool yOpen, int dir, int pos>
 void Lattice::wormStep() {
   constexpr Step step = kSteps[dir][pos];
   bool edge = false;
-  if constexpr (yOpen) edge = dir == 0 ? (this->*fwdEdge)() : (this->*bwdEdge)();
+  if constexpr (yOpen) edge = edge_[worm_n_] & (dir == 0 ? kFwdEdge : kBwdEdge);
   if (edge) {
     decisionStructureYopen(edgePlaq(step.par,step.slot%2),edgeProb(step.par,step.slot%2),step.s,step.t,step.d);
   }
@@ -659,8 +684,8 @@ void Lattice::wormStep() {
   }
 }
 
-// Moves the worm until its head is back at the tail. With yOpen, steps at a y-open edge (fwdEdge,
-// bwdEdge) use the edge patterns.
+// Moves the worm until its head is back at the tail. With yOpen, steps at a y-open edge (edge_) use
+// the edge patterns.
 template <bool yOpen>
 void Lattice::wormLoop() {
   while(true) {
@@ -1159,8 +1184,10 @@ Cfile_.close();
 void simulate(const RunConfig& run, const std::array<double, kNumWeights>& p, const std::string& dir,
               const std::string& tag) {
   rlxd_init(2, static_cast<int>(*run.seed));
+  ranNext = kRanBlock;
   Lattice system(dir, tag, run.bc, run.measurements, run.Lx, run.Ly, run.Lt, p);
   system.set_neighbours();
+  system.set_edges();
   system.set_plaq_origins();
   system.set_AFM_groundstate();
   system.setPatts();
