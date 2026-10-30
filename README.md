@@ -75,6 +75,60 @@ Machine-specific settings (SDK path, compiler flags) belong in a
 `CMakeUserPresets.json`, which is gitignored. Copy the `local-base` pattern from
 `CMakePresets.json`'s `release` preset and then run `cmake --preset=release-local`.
 
+## Testing
+Run everything from the repo root, after building.
+
+### Simulator (C++, CTest)
+```zsh
+(cd build/release && ctest --output-on-failure -j4)           # all tests, about 30 s
+(cd build/release && ctest --output-on-failure -j4 -LE exact) # skip the exact tests, a few seconds
+(cd build/release && ctest --output-on-failure -R golden)     # only the tests whose name matches
+(cd build/release && ctest -N)                                # list the tests without running them
+```
+- **Golden output:** five fixed-seed cases (closed; y-open with even and odd `Ly`; y-open at
+  mu3 = 0.2 and at mu8 = 0.2) are compared byte for byte with `tests/regression/golden`. Two longer
+  y-open cases on 16x16x400 (mu3 = 0.2, mu8 = 0.2) reach rare worm states and are checked by SHA-256
+  checksum. Each case also has a `_seed43_differs` test, which checks that another seed does *not*
+  match the golden files, so the comparison can't pass vacuously.
+- **Runs and configs:**
+  - a recorded run replays exactly
+  - repeated runs with the same parameters share a folder without overwriting each other
+  - several runs in one file match separate runs
+  - the master table is found in a parent folder
+  - bad configs and options are rejected with a clear message (`bad_config_*`, `bad_option_*`)
+- **Exact results:** the tests labelled `exact` (about 30 s in all) compare tiny lattices with the
+  exact results in `tests/exact/`, using `cp2-analysis check-exact`. They need uv, and without it
+  they show as disabled; see `tests/exact/README.md`.
+
+If a golden test fails after a change that is meant to change the physics, regenerate the golden
+files as described in `tests/regression/run_golden.cmake`.
+
+### Analysis package (Python)
+```zsh
+uv sync --project analysis                      # once, to set up the environment
+uv run --project analysis pytest -q analysis    # the tests in analysis/tests
+uv run --project analysis ruff check analysis   # lint
+uv run --project analysis ruff format analysis  # format
+```
+
+### Speed
+Changes to the simulator must not slow it down. `scripts/bench.py` times the runs in
+`tests/bench/bench.toml`: five of about 10 s each (closed, y-open even and odd, mu3, mu8) and one of
+about 60 s on a 100x12x4504 lattice. It isn't part of ctest. Run it on an idle machine before and
+after a change:
+```zsh
+scripts/bench.py --save before-change    # about 6 minutes; --only long for just the 60 s run
+scripts/bench.py --compare tests/bench/results/<time>_before-change.json --save after-change
+scripts/bench.py --list                  # every saved result, with its median per run
+```
+- **`--save LABEL`** writes `tests/bench/results/<UTC time>_<LABEL>.json`, holding the times, each
+  run's full parameters (including the 48 weights), the git version, CPU, OS, compiler and flags.
+  Commit them, so there is a history of the speed.
+- **`--compare`** prints the change per run, and warns when the parameters, CPU or build differ
+  from the baseline's.
+- **What counts:** a change matters only if it is larger than the spread between repeats (well
+  under 1% here).
+
 ## Running a simulation
 The simulator reads a TOML run file from `configs/`; `configs/production.toml` is the batch that
 used to be `run_worm.zsh`:
@@ -179,31 +233,6 @@ folder as a new set of files. A run with no `seed` draws a random one, prints it
 The old flat file names (`M_wormCP2AFMmu2dplaq_BC_..._nSim_1.dat`) are no longer written; the 2020–21
 results with those names are in `data/old_macbook_run/`. Only the C++ tools in `src/tools` read them
 (they parse the names, so they cannot read the new folders); `cp2-analysis` reads the new layout only.
-
-`ctest` runs five fixed-seed cases (closed, y-open with even and odd `Ly`, y-open at mu3 = 0.2 and at mu8 = 0.2) and
-compares them byte for byte with `tests/regression/golden`, plus two longer y-open cases on 16x16x400
-(mu3 = 0.2, mu8 = 0.2) that reach rare worm states, checked by SHA-256 checksum,
-checks that a recorded run replays exactly and that repeated runs with the same parameters share a
-folder without overwriting each other, that
-several runs in one file match separate runs, that the master table is found in a parent folder, and
-that bad configs are rejected with a clear message. The tests labelled `exact` (about 30 s in all;
-`ctest -j4` runs them in parallel, `ctest -LE exact` skips them) compare tiny lattices with the exact
-results in `tests/exact/` using `cp2-analysis check-exact`, so they need uv (they show as disabled
-without it); see `tests/exact/README.md`.
-
-Changes to the simulator must not slow it down. `scripts/bench.py` times the runs in
-`tests/bench/bench.toml` (five of about 10 s covering closed, y-open even and odd, mu3 and mu8, and
-one of about 60 s on a 100x12x4504 lattice); run it on an idle machine before and after a change:
-```zsh
-scripts/bench.py --save before-change    # about 6 minutes; --only long for just the 60 s run
-scripts/bench.py --compare tests/bench/results/<time>_before-change.json --save after-change
-scripts/bench.py --list                  # every saved result, with its median per run
-```
-`--save LABEL` writes `tests/bench/results/<UTC time>_<LABEL>.json`: the times, each run's full
-parameters (including the 48 weights), the git version, CPU, OS, compiler and flags. Commit them, so
-there is a history of the speed. `--compare` prints the change per run and warns when the parameters,
-CPU or build differ from the baseline's. A change matters only if it is larger than the spread
-between repeats (well under 1% here).
 
 ### Analysing M_ output
 The `cp2-analysis` command (package in `analysis/`, managed with uv) analyses the

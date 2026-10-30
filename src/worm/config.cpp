@@ -78,23 +78,23 @@ std::string RunConfig::folderName() const {
 
 std::string RunConfig::runDir() const { return (fs::path(dataDir) / folderName()).lexically_normal().string(); }
 
-std::string utcStamp() {
+namespace {
+
+// The current UTC time in the strftime format fmt.
+std::string utcFormat(const char* fmt) {
   const std::time_t now = std::time(nullptr);
   std::tm tm{};
   gmtime_r(&now, &tm);
   char buf[32];
-  std::strftime(buf, sizeof buf, "%Y%m%d-%H%M%S", &tm);
+  std::strftime(buf, sizeof buf, fmt, &tm);
   return buf;
 }
 
-std::string utcNow() {
-  const std::time_t now = std::time(nullptr);
-  std::tm tm{};
-  gmtime_r(&now, &tm);
-  char buf[32];
-  std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tm);
-  return buf;
-}
+}  // namespace
+
+std::string utcStamp() { return utcFormat("%Y%m%d-%H%M%S"); }
+
+std::string utcNow() { return utcFormat("%Y-%m-%dT%H:%M:%SZ"); }
 
 namespace {
 

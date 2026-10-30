@@ -49,6 +49,15 @@ void printUsage(ostream& os) {
         "records it in run_<time>.toml, which reproduces the run.\n";
 }
 
+// The value of a numeric option as an integer from 1 to max, or nothing if it is not one.
+std::optional<unsigned> parseCount(const string& v, unsigned long long max) {
+  char* end = nullptr;
+  errno = 0;
+  const unsigned long long n = strtoull(v.c_str(), &end, 10);
+  if (v.empty() || *end != '\0' || errno != 0 || n < 1 || n > max) return std::nullopt;
+  return static_cast<unsigned>(n);
+}
+
 Options parseArgs(int argc, char** argv) {
   Options o;
   auto value = [&](int& i, const string& flag) -> string {
@@ -67,22 +76,13 @@ Options parseArgs(int argc, char** argv) {
       o.dataDir = value(i, a);
     } else if (a == "--seed") {
       const string v = value(i, a);
-      char* end = nullptr;
-      errno = 0;
-      const unsigned long long n = strtoull(v.c_str(), &end, 10);
-      if (v.empty() || *end != '\0' || errno != 0 || n < 1 || n > kMaxSeed) {
-        throw InputError("--seed must be an integer between 1 and 2147483647, got '" + v + "'");
-      }
-      o.seed = static_cast<unsigned>(n);
+      o.seed = parseCount(v, kMaxSeed);
+      if (!o.seed) throw InputError("--seed must be an integer between 1 and 2147483647, got '" + v + "'");
     } else if (a == "--jobs") {
       const string v = value(i, a);
-      char* end = nullptr;
-      errno = 0;
-      const unsigned long long n = strtoull(v.c_str(), &end, 10);
-      if (v.empty() || *end != '\0' || errno != 0 || n < 1 || n > 1024) {
-        throw InputError("--jobs must be an integer of at least 1, got '" + v + "'");
-      }
-      o.jobs = static_cast<unsigned>(n);
+      const auto jobs = parseCount(v, 1024);
+      if (!jobs) throw InputError("--jobs must be an integer of at least 1, got '" + v + "'");
+      o.jobs = *jobs;
     } else if (a.size() > 1 && a[0] == '-') {
       throw InputError("unknown option '" + a + "'");
     } else if (o.configPath.empty()) {
